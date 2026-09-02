@@ -1,0 +1,658 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // AUTHENTICATION / PROFILE HELPERS
+    // ============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userExists() {
+      return isSignedIn()
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        );
+    }
+
+    function callerProfile() {
+      return get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data;
+    }
+
+    function callerRole() {
+      return userExists()
+        ? callerProfile().access_role
+        : null;
+    }
+
+
+    // ============================================================
+    // CURRENT APPLICATION ROLES
+    // ============================================================
+
+    function isAdmin() {
+      return callerRole() == "admin";
+    }
+
+    function isElectionOfficer() {
+      return callerRole() == "election_officer";
+    }
+
+    function isAdminOrElectionOfficer() {
+      return isAdmin() || isElectionOfficer();
+    }
+
+    function isMember() {
+      return callerRole() == "member";
+    }
+
+
+    // ============================================================
+    // MEMBERSHIP TYPES
+    // ============================================================
+
+    function isSocialMember() {
+      return isMember()
+        && callerProfile().membership_types.hasAny([
+          "social_member"
+        ]);
+    }
+
+    function isCampaignMember() {
+      return isMember()
+        && callerProfile().membership_types.hasAny([
+          "campaign_member"
+        ]);
+    }
+
+    function isSocialOrCampaignMember() {
+      return isSocialMember() || isCampaignMember();
+    }
+
+
+    // ============================================================
+    // OWNERSHIP
+    // ============================================================
+
+    function isOwner(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId;
+    }
+
+
+    // ============================================================
+    // TASK HELPERS
+    // ============================================================
+
+    function taskExists(taskId) {
+      return exists(
+        /databases/$(database)/documents/tasks/$(taskId)
+      );
+    }
+
+    function taskData(taskId) {
+      return get(
+        /databases/$(database)/documents/tasks/$(taskId)
+      ).data;
+    }
+
+    function isActiveTask(taskId) {
+      return taskExists(taskId)
+        && taskData(taskId).status == "active";
+    }
+
+    function requiresProof(taskId) {
+      return taskData(taskId).action == "Share"
+        || taskData(taskId).action == "Make post";
+    }
+
+
+    // ============================================================
+    // USERS
+    // ============================================================
+
+    match /users/{userId} {
+
+      // Authenticated users may read profiles.
+      //
+      // Existing application behavior depends on this for:
+      // - leaderboard
+      // - member management
+      // - profile lookup
+      allow read: if isSignedIn();
+
+
+      // ----------------------------------------------------------
+      // SELF REGISTRATION
+      // ----------------------------------------------------------
+
+      allow create: if isOwner(userId)
+        && request.resource.data.access_role == "member"
+        && request.resource.data.points == 0;
+
+
+      // ----------------------------------------------------------
+      // ADMIN CREATION
+      // ----------------------------------------------------------
+
+      allow create: if isAdmin();
+
+
+      // ----------------------------------------------------------
+      // SELF UPDATE
+      // ----------------------------------------------------------
+
+      // A member may update their own profile, but cannot
+      // promote themselves or alter their points.
+      allow update: if isOwner(userId)
+        && request.resource.data.access_role
+          == resource.data.access_role
+        && request.resource.data.points
+          == resource.data.points;
+
+
+      // ----------------------------------------------------------
+      // ADMIN UPDATE
+      // ----------------------------------------------------------
+
+      allow update: if isAdmin();
+
+
+      // ----------------------------------------------------------
+      // DELETE
+      // ----------------------------------------------------------
+
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // SOCIAL MEDIA TASKS
+    // ============================================================
+
+    match /tasks/{taskId} {
+
+      // Admin sees all tasks.
+      allow read: if isAdmin();
+
+      // Social members see active social tasks.
+      allow read: if isSocialMember()
+        && resource.data.status == "active";
+
+      // Only tenant admin currently manages social tasks.
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // SOCIAL TASK SUBMISSIONS
+    // ============================================================
+
+    match /task_submissions/{submissionId} {
+
+      // Admin sees all submissions.
+      allow read: if isAdmin();
+
+      // Social member sees own submissions.
+      allow read: if isSocialMember()
+        && resource.data.user_id == request.auth.uid;
+
+
+      // ----------------------------------------------------------
+      // CREATE
+      // ----------------------------------------------------------
+
+      allow create: if isSocialMember()
+
+        && request.resource.data.user_id
+          == request.auth.uid
+
+        && taskExists(
+          request.resource.data.task_id
+        )
+
+        && isActiveTask(
+          request.resource.data.task_id
+        )
+
+        && submissionId
+          == request.resource.data.task_id
+            + "_"
+            + request.auth.uid
+
+        && !exists(
+          /databases/$(database)/documents/task_submissions/
+          $(request.resource.data.task_id + "_" + request.auth.uid)
+        )
+
+        && request.resource.data.status == "pending"
+
+        && (
+          (
+            requiresProof(
+              request.resource.data.task_id
+            )
+
+            && request.resource.data.keys().hasAny([
+              "proof_url"
+            ])
+
+            && request.resource.data.proof_url is string
+
+            && request.resource.data.proof_url != ""
+          )
+
+          ||
+
+          (
+            !requiresProof(
+              request.resource.data.task_id
+            )
+
+            && (
+              !request.resource.data.keys().hasAny([
+                "proof_url"
+              ])
+
+              || request.resource.data.proof_url == null
+            )
+          )
+        );
+
+
+      // Only admin can verify submissions.
+      allow update: if isAdmin();
+
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // NEWS
+    // ============================================================
+
+    match /news/{newsId} {
+
+      allow read: if resource.data.published == true
+        || isAdmin();
+
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // EVENTS
+    // ============================================================
+
+    match /events/{eventId} {
+
+      // Existing application behavior:
+      // authenticated users can view events.
+      allow read: if isSignedIn();
+
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // ELECTION RESULTS
+    // ============================================================
+
+    match /election_results/{resultId} {
+
+      // Existing application behavior:
+      // authenticated users may view submitted results.
+      allow read: if isSignedIn();
+
+
+      // ----------------------------------------------------------
+      // CREATE
+      // ----------------------------------------------------------
+
+      allow create: if isSignedIn()
+
+        // Prevent overwriting.
+        && !exists(
+          /databases/$(database)/documents/election_results/
+          $(resultId)
+        )
+
+        // Submitter must be authenticated user.
+        && request.resource.data.submitted_by
+          == request.auth.uid
+
+        // All new submissions start unverified.
+        && request.resource.data.verified == false
+
+        && (
+          // ------------------------------------------------------
+          // ADMIN / ELECTION OFFICER
+          // ------------------------------------------------------
+
+          isAdminOrElectionOfficer()
+
+          ||
+
+          // ------------------------------------------------------
+          // ORDINARY MEMBER
+          // ------------------------------------------------------
+
+          (
+            isMember()
+
+            && request.resource.data.ward_id
+              == callerProfile().ward_id
+
+            && request.resource.data.polling_unit_id
+              == callerProfile().polling_unit_id
+
+            && resultId
+              == callerProfile().ward_id
+                + "__"
+                + callerProfile().polling_unit_id
+          )
+        );
+
+
+      // ----------------------------------------------------------
+      // UPDATE
+      // ----------------------------------------------------------
+
+      allow update: if isAdmin();
+
+
+      // ----------------------------------------------------------
+      // DELETE
+      // ----------------------------------------------------------
+
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // ORGANIZATIONAL ASSIGNMENTS
+    // ============================================================
+
+    match /organizational_assignments/{assignmentId} {
+
+      // A user can see their own organizational assignments.
+      allow read: if isSignedIn()
+        && resource.data.user_id == request.auth.uid;
+
+      // Current application administrator manages assignments.
+      //
+      // This will eventually become:
+      //
+      // Tenant Admin / authorized organization managers
+      //
+      // without changing the collection itself.
+      allow read: if isAdmin();
+
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+
+   match /campaign_activities/{activityId} {
+
+  // ----------------------------------------------------------
+  // READ
+  // ----------------------------------------------------------
+  //
+  // Activity visibility is currently handled by the application
+  // using organizational scope.
+  //
+  // Firestore therefore permits authenticated users to read
+  // activity documents.
+  //
+  allow read: if isSignedIn();
+
+
+  // ----------------------------------------------------------
+  // CREATE
+  // ----------------------------------------------------------
+  //
+  // The creator must:
+  //
+  // 1. Be authenticated.
+  // 2. Have an existing user profile.
+  // 3. Belong to the current campaign tenant.
+  // 4. Identify themselves as created_by.
+  //
+  // Admins are allowed regardless of organizational assignment.
+  //
+  // Normal members must additionally have an active
+  // organizational assignment for the scope of the activity.
+  //
+  allow create: if isSignedIn()
+    && userExists()
+
+    && request.resource.data.tenant_id
+      == callerProfile().tenant_id
+
+    && request.resource.data.created_by
+      == request.auth.uid
+
+    && (
+      isAdmin()
+
+      ||
+
+      (
+        isMember()
+
+        && exists(
+          /databases/$(database)/documents/campaign_activity_access/
+          $(request.auth.uid)
+            + "__"
+            + request.resource.data.scope_type
+            + "__"
+            + request.resource.data.scope_id
+        )
+
+        && get(
+          /databases/$(database)/documents/campaign_activity_access/
+          $(request.auth.uid)
+            + "__"
+            + request.resource.data.scope_type
+            + "__"
+            + request.resource.data.scope_id
+        ).data.tenant_id
+          == request.resource.data.tenant_id
+
+        && get(
+          /databases/$(database)/documents/campaign_activity_access/
+          $(request.auth.uid)
+            + "__"
+            + request.resource.data.scope_type
+            + "__"
+            + request.resource.data.scope_id
+        ).data.user_id
+          == request.auth.uid
+
+        && get(
+          /databases/$(database)/documents/campaign_activity_access/
+          $(request.auth.uid)
+            + "__"
+            + request.resource.data.scope_type
+            + "__"
+            + request.resource.data.scope_id
+        ).data.can_create
+          == true
+      )
+    );
+
+
+  // ----------------------------------------------------------
+  // UPDATE
+  // ----------------------------------------------------------
+
+  allow update: if isAdmin();
+
+
+  // ----------------------------------------------------------
+  // DELETE
+  // ----------------------------------------------------------
+
+  allow delete: if isAdmin();
+}
+
+    // ============================================================
+    // PERMISSION GRANTS
+    // ============================================================
+
+    match /permission_grants/{grantId} {
+
+      // User may inspect their own grants.
+      allow read: if isSignedIn()
+        && resource.data.user_id == request.auth.uid;
+
+      // Admin can inspect all grants.
+      allow read: if isAdmin();
+
+      // Admin manages grants.
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // CAMPAIGN ASSIGNMENTS
+    // ============================================================
+
+    match /campaign_assignments/{assignmentId} {
+
+      // A user may read assignments directly assigned to them.
+      // Support both the current UID-based model and any legacy
+      // email-based records already in the database.
+      allow read: if isSignedIn()
+        && (
+          resource.data.assigned_to == request.auth.uid
+          || resource.data.assigned_to == request.auth.token.email
+          || isAdmin()
+        );
+
+      // Admins may read and manage all campaign assignments.
+      allow read: if isAdmin();
+
+      // Create / update / delete remain admin-controlled unless a
+      // future scoped-assignment policy is introduced.
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // CAMPAIGN FIELD REPORTS
+    // ============================================================
+
+    match /campaign_field_reports/{reportId} {
+
+      // A member can read reports they personally submitted.
+      allow read: if isSignedIn()
+        && resource.data.submitted_by == request.auth.uid;
+
+      // Admins can manage all campaign reports.
+      allow read, create, update, delete: if isAdmin();
+
+      // Signed-in users can submit their own reports.
+      allow create: if isSignedIn()
+        && userExists()
+        && request.resource.data.submitted_by
+          == request.auth.uid
+        && request.resource.data.status
+          == "submitted"
+        && request.resource.data.tenant_id
+          == callerProfile().tenant_id;
+    }
+
+
+    // ============================================================
+    // CAMPAIGN ISSUES
+    // ============================================================
+
+    match /issues/{issueId} {
+
+      // Admins can read everything.
+      //
+      // Signed-in users can read issues that contain scope
+      // information. Client-side queries should restrict the
+      // results to the user's authorized scope.
+      allow read: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.scope_type is string
+          && resource.data.scope_id is string
+        );
+
+
+      // Campaign members can report issues.
+      //
+      // New issues must:
+      // - be reported by the authenticated user
+      // - start with status "reported"
+      // - contain valid title/description
+      // - contain scope information
+      allow create: if isSignedIn()
+        && userExists()
+        && request.resource.data.reported_by
+          == request.auth.uid
+        && request.resource.data.status
+          == "reported"
+        && request.resource.data.title is string
+        && request.resource.data.description is string
+        && request.resource.data.scope_type is string
+        && request.resource.data.scope_id is string
+        && (
+          isAdmin()
+          || isMember()
+        );
+
+
+      // Only admins may currently modify issues.
+      allow update: if isAdmin();
+
+      // Only admins may delete issues.
+      allow delete: if isAdmin();
+    }
+
+
+    // ============================================================
+    // FUTURE CAMPAIGN COLLECTIONS
+    // ============================================================
+    //
+    // Do not add permissive rules here yet.
+    //
+    // Examples:
+    //
+    // /campaign_notices
+    // /campaign_documents
+    // /campaign_memberships
+    //
+    // Introduce each collection with its corresponding
+    // permission checks.
+    // ============================================================
+
+
+    // ============================================================
+    // DEFAULT DENY
+    // ============================================================
+    //
+    // Any collection not explicitly declared above is denied.
+    //
+  }
+}
