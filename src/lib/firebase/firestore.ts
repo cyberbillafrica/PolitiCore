@@ -356,20 +356,17 @@ export function normalizeNewsArticle(id: string, data: Record<string, unknown>):
 }
 
 export async function getPublishedNews(limitCount: number = 20): Promise<NewsArticle[]> {
-  // Query articles where status is published
+  // Simple equality queries without orderBy to avoid requiring Firestore composite indexes
   const qStatus = query(
     collection(db, "news"),
     where("status", "==", "published"),
-    orderBy("created_at", "desc"),
-    limit(limitCount),
+    limit(limitCount * 2),
   );
 
-  // Also query legacy published articles where published == true
   const qLegacy = query(
     collection(db, "news"),
     where("published", "==", true),
-    orderBy("created_at", "desc"),
-    limit(limitCount),
+    limit(limitCount * 2),
   );
 
   try {

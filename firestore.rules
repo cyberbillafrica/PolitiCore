@@ -280,8 +280,8 @@ service cloud.firestore {
 
     match /news/{newsId} {
 
-      allow read: if resource.data.published == true
-        || resource.data.status == "published"
+      allow read: if resource.data.get('published', false) == true
+        || resource.data.get('status', '') == "published"
         || isAdmin();
 
       allow create: if isAdmin();
