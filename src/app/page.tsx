@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -7,13 +10,54 @@ import {
   Target,
   Heart,
   MapPin,
+  Tag,
+  Loader2,
+  FileText,
 } from "lucide-react";
 
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ElectionCountdown from "@/components/home/ElectionCountdown";
+import { getPublishedNews } from "@/lib/firebase/firestore";
+import type { NewsArticle } from "@/types";
 
 export default function HomePage() {
+  const [latestNews, setLatestNews] = useState<NewsArticle[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadLatestNews() {
+      try {
+        setNewsLoading(true);
+        const data = await getPublishedNews(3);
+        setLatestNews(data);
+      } catch (err) {
+        console.error("Failed to load homepage news:", err);
+      } finally {
+        setNewsLoading(false);
+      }
+    }
+
+    loadLatestNews();
+  }, []);
+
+  function formatDate(rawTimestamp: any) {
+    if (!rawTimestamp) return "Recent";
+    let date: Date;
+    if (rawTimestamp.seconds) {
+      date = new Date(rawTimestamp.seconds * 1000);
+    } else if (typeof rawTimestamp === "string" || typeof rawTimestamp === "number") {
+      date = new Date(rawTimestamp);
+    } else {
+      return "Recent";
+    }
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  }
+
   const events = [
     {
       id: 1,
@@ -38,29 +82,6 @@ export default function HomePage() {
       time: "2:00 PM",
       venue: "Ozalla Civic Center",
       ward: "Ozalla",
-    },
-  ];
-
-  const newsArticles = [
-    {
-      id: 1,
-      title: "APC Candidate Pledges Quality Representation for Nkanu West",
-      excerpt:
-        "Our candidate outlines comprehensive plan for constituency development...",
-      date: "2026-08-10",
-    },
-    {
-      id: 2,
-      title: "Massive Turnout at Campaign Flag-off in Agbani",
-      excerpt:
-        "Thousands of supporters gather as campaign officially kicks off...",
-      date: "2026-08-08",
-    },
-    {
-      id: 3,
-      title: "Infrastructure Development: A Key Priority",
-      excerpt: "Road construction and rural electrification top the agenda...",
-      date: "2026-08-05",
     },
   ];
 
@@ -262,31 +283,74 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="grid gap-8 md:grid-cols-3">
-            {newsArticles.map((article) => (
-              <Link
-                key={article.id}
-                href={`/news/${article.id}`}
-                className="group overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md"
-              >
-                <div className="relative h-48 bg-gradient-to-br from-apc-primary/10 to-apc-secondary/10">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Calendar className="h-12 w-12 text-apc-primary/20" />
+          {newsLoading ? (
+            <div className="flex min-h-[200px] items-center justify-center gap-3 text-gray-500">
+              <Loader2 className="h-6 w-6 animate-spin text-apc-primary" />
+              <p className="text-sm font-medium">Loading campaign updates…</p>
+            </div>
+          ) : latestNews.length === 0 ? (
+            <div className="rounded-2xl bg-white p-8 text-center border shadow-sm">
+              <FileText className="mx-auto h-8 w-8 text-gray-300 mb-2" />
+              <p className="text-base font-medium text-gray-700">No published news articles yet.</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Check back soon for news and updates from the campaign team.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-8 md:grid-cols-3">
+              {latestNews.map((article) => (
+                <Link
+                  key={article.id}
+                  href={`/news/${article.slug}`}
+                  className="group flex flex-col overflow-hidden rounded-xl bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-md border border-gray-100"
+                >
+                  {article.featured_image ? (
+                    <div className="relative aspect-[16/9] w-full overflow-hidden bg-gray-100">
+                      <Image
+                        src={article.featured_image}
+                        alt={article.title}
+                        fill
+                        className="object-cover transition-transform duration-300 group-hover:scale-105"
+                        sizes="(max-width: 768px) 100vw, 33vw"
+                      />
+                    </div>
+                  ) : (
+                    <div className="relative aspect-[16/9] w-full bg-gradient-to-br from-apc-primary/10 to-apc-secondary/10 flex items-center justify-center">
+                      <span className="text-2xl font-bold text-apc-primary/20">Ifeanyi 2027</span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-1 flex-col p-6">
+                    <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5 text-apc-primary" />
+                        {formatDate(article.published_at || article.created_at)}
+                      </span>
+                      {article.category && (
+                        <span className="flex items-center gap-1 rounded bg-apc-primary/10 px-2 py-0.5 text-apc-primary font-medium">
+                          <Tag className="h-3 w-3" />
+                          {article.category}
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="mb-2 text-lg font-bold text-gray-900 transition-colors group-hover:text-apc-primary line-clamp-2">
+                      {article.title}
+                    </h3>
+
+                    <p className="flex-1 text-sm text-gray-600 line-clamp-3 leading-relaxed mb-4">
+                      {article.excerpt || article.content}
+                    </p>
+
+                    <div className="inline-flex items-center text-sm font-semibold text-apc-primary">
+                      Read story
+                      <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    </div>
                   </div>
-                </div>
-
-                <div className="p-6">
-                  <span className="text-sm text-gray-500">{article.date}</span>
-
-                  <h3 className="mb-3 mt-2 text-lg font-semibold text-apc-primary transition-colors group-hover:text-apc-secondary">
-                    {article.title}
-                  </h3>
-
-                  <p className="text-sm text-gray-600">{article.excerpt}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

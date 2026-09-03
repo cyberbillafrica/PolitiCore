@@ -162,6 +162,7 @@ export default function Footer() {
               {[
                 ["Volunteer", "/volunteer"],
                 ["Member Portal", "/portal/dashboard"],
+                ["User Guide & Manual", "/documentation"],
                 ["Contact Us", "/contact"],
               ].map(([label, href]) => (
                 <li key={href}>
