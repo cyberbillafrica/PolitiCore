@@ -316,20 +316,190 @@ export async function getLeaderboard(topN: number = 50) {
 // News
 // ─────────────────────────────────────────────
 
-export async function getPublishedNews() {
-  const q = query(
+import type { NewsArticle, NewsStatus } from "@/types";
+
+export function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Normalizes Firestore news document data into a consistent NewsArticle interface.
+ * Handles legacy documents that use `published: boolean`.
+ */
+export function normalizeNewsArticle(id: string, data: Record<string, unknown>): NewsArticle {
+  const status: NewsStatus =
+    (data.status as NewsStatus) || (data.published ? "published" : "draft");
+
+  return {
+    id,
+    title: (data.title as string) || "Untitled Article",
+    slug: (data.slug as string) || generateSlug((data.title as string) || id),
+    excerpt: (data.excerpt as string) || "",
+    content: (data.content as string) || "",
+    featured_image: (data.featured_image as string) ?? null,
+    category: (data.category as string) ?? null,
+    status,
+    published: status === "published",
+    published_at: data.published_at ?? data.created_at ?? null,
+    scheduled_at: data.scheduled_at ?? null,
+    author: (data.author as string) ?? null,
+    created_by: (data.created_by as string) || "",
+    updated_by: (data.updated_by as string) ?? null,
+    created_at: data.created_at ?? null,
+    updated_at: data.updated_at ?? null,
+  };
+}
+
+export async function getPublishedNews(limitCount: number = 20): Promise<NewsArticle[]> {
+  // Query articles where status is published
+  const qStatus = query(
+    collection(db, "news"),
+    where("status", "==", "published"),
+    orderBy("created_at", "desc"),
+    limit(limitCount),
+  );
+
+  // Also query legacy published articles where published == true
+  const qLegacy = query(
     collection(db, "news"),
     where("published", "==", true),
     orderBy("created_at", "desc"),
-    limit(10),
+    limit(limitCount),
   );
 
-  const snap = await getDocs(q);
+  try {
+    const [snapStatus, snapLegacy] = await Promise.all([
+      getDocs(qStatus).catch(() => ({ docs: [] })),
+      getDocs(qLegacy).catch(() => ({ docs: [] })),
+    ]);
 
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-  }));
+    const articlesMap = new Map<string, NewsArticle>();
+
+    for (const d of snapStatus.docs) {
+      articlesMap.set(d.id, normalizeNewsArticle(d.id, d.data()));
+    }
+
+    for (const d of snapLegacy.docs) {
+      if (!articlesMap.has(d.id)) {
+        articlesMap.set(d.id, normalizeNewsArticle(d.id, d.data()));
+      }
+    }
+
+    const articles = Array.from(articlesMap.values());
+    articles.sort((a, b) => {
+      const timeA = (a.created_at as { seconds?: number })?.seconds || 0;
+      const timeB = (b.created_at as { seconds?: number })?.seconds || 0;
+      return timeB - timeA;
+    });
+
+    return articles.slice(0, limitCount);
+  } catch (error) {
+    console.error("Error fetching published news:", error);
+    return [];
+  }
+}
+
+export async function getAllNewsArticles(): Promise<NewsArticle[]> {
+  const q = query(collection(db, "news"), orderBy("created_at", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => normalizeNewsArticle(d.id, d.data()));
+}
+
+export async function getNewsArticle(id: string): Promise<NewsArticle | null> {
+  const snap = await getDoc(doc(db, "news", id));
+  if (!snap.exists()) return null;
+  return normalizeNewsArticle(snap.id, snap.data());
+}
+
+export async function getNewsArticleBySlug(slug: string): Promise<NewsArticle | null> {
+  // Query status == published or legacy published == true
+  const qStatus = query(
+    collection(db, "news"),
+    where("slug", "==", slug),
+    where("status", "==", "published"),
+    limit(1)
+  );
+
+  const qLegacy = query(
+    collection(db, "news"),
+    where("slug", "==", slug),
+    where("published", "==", true),
+    limit(1)
+  );
+
+  const [snapStatus, snapLegacy] = await Promise.all([
+    getDocs(qStatus).catch(() => ({ docs: [], empty: true })),
+    getDocs(qLegacy).catch(() => ({ docs: [], empty: true })),
+  ]);
+
+  const docData = snapStatus.docs[0] || snapLegacy.docs[0];
+  if (!docData) return null;
+
+  return normalizeNewsArticle(docData.id, docData.data());
+}
+
+export async function createNewsArticle(
+  articleData: Omit<NewsArticle, "id" | "created_at" | "updated_at">
+): Promise<string> {
+  const docData: Record<string, unknown> = {
+    title: articleData.title,
+    slug: articleData.slug || generateSlug(articleData.title),
+    excerpt: articleData.excerpt || "",
+    content: articleData.content || "",
+    featured_image: articleData.featured_image || null,
+    category: articleData.category || null,
+    status: articleData.status || "draft",
+    published: articleData.status === "published",
+    published_at: articleData.status === "published" ? serverTimestamp() : (articleData.published_at || null),
+    scheduled_at: articleData.scheduled_at || null,
+    author: articleData.author || null,
+    created_by: articleData.created_by || "",
+    updated_by: articleData.updated_by || null,
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  };
+
+  const docRef = await addDoc(collection(db, "news"), docData);
+  return docRef.id;
+}
+
+export async function updateNewsArticle(
+  id: string,
+  articleData: Partial<NewsArticle>
+): Promise<void> {
+  const updateData: Record<string, unknown> = {
+    updated_at: serverTimestamp(),
+  };
+
+  if (articleData.title !== undefined) updateData.title = articleData.title;
+  if (articleData.slug !== undefined) updateData.slug = articleData.slug;
+  if (articleData.excerpt !== undefined) updateData.excerpt = articleData.excerpt;
+  if (articleData.content !== undefined) updateData.content = articleData.content;
+  if (articleData.featured_image !== undefined) updateData.featured_image = articleData.featured_image;
+  if (articleData.category !== undefined) updateData.category = articleData.category;
+  if (articleData.author !== undefined) updateData.author = articleData.author;
+  if (articleData.updated_by !== undefined) updateData.updated_by = articleData.updated_by;
+  if (articleData.scheduled_at !== undefined) updateData.scheduled_at = articleData.scheduled_at;
+
+  if (articleData.status !== undefined) {
+    updateData.status = articleData.status;
+    updateData.published = articleData.status === "published";
+    if (articleData.status === "published" && !articleData.published_at) {
+      updateData.published_at = serverTimestamp();
+    }
+  }
+
+  await updateDoc(doc(db, "news", id), updateData);
+}
+
+export async function deleteNewsArticle(id: string): Promise<void> {
+  const { deleteDoc } = await import("firebase/firestore");
+  await deleteDoc(doc(db, "news", id));
 }
 
 // ─────────────────────────────────────────────
