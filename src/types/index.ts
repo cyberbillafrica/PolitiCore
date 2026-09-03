@@ -88,6 +88,42 @@ export interface OrganizationalAssignment {
 }
 
 // ============================================================
+// NEWS
+// ============================================================
+
+export type NewsStatus = "draft" | "published" | "scheduled" | "archived";
+
+export interface NewsArticle {
+  id: string;
+
+  title: string;
+  slug: string;
+
+  excerpt: string;
+  content: string;
+
+  featured_image?: string | null;
+
+  category?: string | null;
+
+  status: NewsStatus;
+
+  // Support legacy boolean flag
+  published?: boolean;
+
+  published_at?: unknown | null;
+  scheduled_at?: unknown | null;
+
+  author?: string | null;
+
+  created_by: string;
+  updated_by?: string | null;
+
+  created_at: unknown;
+  updated_at: unknown;
+}
+
+// ============================================================
 // PERMISSIONS
 // ============================================================
 

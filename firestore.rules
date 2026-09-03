@@ -281,6 +281,7 @@ service cloud.firestore {
     match /news/{newsId} {
 
       allow read: if resource.data.published == true
+        || resource.data.status == "published"
         || isAdmin();
 
       allow create: if isAdmin();
