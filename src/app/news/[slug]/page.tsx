@@ -138,6 +138,7 @@ export default function NewsArticleDetailPage({ params }: PageProps) {
                   alt={article.title}
                   fill
                   priority
+                  unoptimized
                   className="object-cover"
                   sizes="(max-width: 1024px) 100vw, 800px"
                 />
