@@ -1,10 +1,24 @@
-import { collection, getDocs, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  query,
+  where,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 import { db } from "./config";
 
 import { CURRENT_TENANT_ID } from "./tenants";
 
-import type { OrganizationalAssignment, UserProfile } from "@/types";
+import type {
+  OrganizationalAssignment,
+  UserProfile,
+  MembershipType,
+  Role,
+} from "@/types";
 
 /*
  * ============================================================
@@ -30,22 +44,7 @@ export interface ScopedCampaignMembersResult {
 
 /*
  * ============================================================
- * GET SCOPED CAMPAIGN MEMBERS
- * ============================================================
- *
- * IMPORTANT:
- *
- * We deliberately use the member's registered electoral
- * location for Ward / Polling Unit scopes.
- *
- * We do NOT confuse the user's personal electoral location
- * with their organizational assignment.
- *
- * The assignment tells us WHAT AREA the coordinator controls.
- * The user profile tells us WHERE that member is registered.
- *
- * Higher geographic scopes (LGA / Zone / State) require the
- * electoral hierarchy resolver before we query them safely.
+ * GET ALL CAMPAIGN MEMBERS FOR TENANT
  * ============================================================
  */
 
@@ -71,6 +70,12 @@ export async function getAllCampaignMembersForTenant(
     return left.localeCompare(right);
   });
 }
+
+/*
+ * ============================================================
+ * GET SCOPED CAMPAIGN MEMBERS
+ * ============================================================
+ */
 
 export async function getScopedCampaignMembers(
   assignment: OrganizationalAssignment,
@@ -150,31 +155,6 @@ export async function getScopedCampaignMembers(
    * ----------------------------------------------------------
    * HIGHER ORGANIZATIONAL LEVELS
    * ----------------------------------------------------------
-   *
-   * We intentionally do not guess here.
-   *
-   * UserProfile currently has:
-   *
-   *     ward_id
-   *     polling_unit_id
-   *
-   * but does not contain:
-   *
-   *     lga_id
-   *     senatorial_zone_id
-   *     state_id
-   *
-   * Therefore an LGA/Zone/State query requires the electoral
-   * hierarchy to resolve:
-   *
-   *     LGA
-   *       ↓
-   *     Wards
-   *       ↓
-   *     Polling Units
-   *
-   * before querying members.
-   * ----------------------------------------------------------
    */
 
   return {
@@ -183,4 +163,79 @@ export async function getScopedCampaignMembers(
     message:
       "This organizational scope requires the electoral hierarchy resolver before members can be loaded safely.",
   };
+}
+
+/*
+ * ============================================================
+ * GET USER PROFILE BY ID
+ * ============================================================
+ */
+
+export async function getCampaignMemberById(
+  memberId: string,
+): Promise<ScopedCampaignMember | null> {
+  const memberDoc = await getDoc(doc(db, "users", memberId));
+
+  if (!memberDoc.exists()) {
+    return null;
+  }
+
+  return {
+    id: memberDoc.id,
+    ...memberDoc.data(),
+  } as ScopedCampaignMember;
+}
+
+/*
+ * ============================================================
+ * UPDATE MEMBER PROFILE
+ * ============================================================
+ */
+
+export async function updateCampaignMemberProfile(
+  memberId: string,
+  data: Partial<UserProfile>,
+): Promise<void> {
+  const memberRef = doc(db, "users", memberId);
+
+  await updateDoc(memberRef, {
+    ...data,
+    updated_at: serverTimestamp(),
+  });
+}
+
+/*
+ * ============================================================
+ * UPDATE MEMBERSHIP TYPES
+ * ============================================================
+ */
+
+export async function updateMemberMembershipTypes(
+  memberId: string,
+  membershipTypes: MembershipType[],
+): Promise<void> {
+  const memberRef = doc(db, "users", memberId);
+
+  await updateDoc(memberRef, {
+    membership_types: membershipTypes,
+    updated_at: serverTimestamp(),
+  });
+}
+
+/*
+ * ============================================================
+ * UPDATE ACCESS ROLE
+ * ============================================================
+ */
+
+export async function updateMemberAccessRole(
+  memberId: string,
+  accessRole: Role,
+): Promise<void> {
+  const memberRef = doc(db, "users", memberId);
+
+  await updateDoc(memberRef, {
+    access_role: accessRole,
+    updated_at: serverTimestamp(),
+  });
 }

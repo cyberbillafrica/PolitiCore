@@ -8,7 +8,10 @@ import {
   query,
   where,
   orderBy,
-  limit,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
 
@@ -16,6 +19,7 @@ import { db } from "@/lib/firebase/config";
 import type {
   OrganizationalAssignment,
   OrganizationalPosition,
+  OrganizationalAssignmentStatus,
   ScopeType,
 } from "@/types";
 
@@ -113,6 +117,54 @@ export async function getActiveOrganizationalAssignments(
 
 /*
  * ============================================================
+ * GET ALL ASSIGNMENTS (ADMIN)
+ * ============================================================
+ */
+
+export async function getAllOrganizationalAssignments(): Promise<
+  OrganizationalAssignment[]
+> {
+  const assignmentsRef = collection(db, COLLECTION);
+
+  const q = query(assignmentsRef, orderBy("created_at", "desc"));
+
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((assignmentDoc) =>
+    mapAssignment(assignmentDoc.id, assignmentDoc.data()),
+  );
+}
+
+/*
+ * ============================================================
+ * GET ASSIGNMENTS BY USER ID (ADMIN)
+ * ============================================================
+ */
+
+export async function getOrganizationalAssignmentsByUserId(
+  userId: string,
+): Promise<OrganizationalAssignment[]> {
+  if (!userId) {
+    return [];
+  }
+
+  const assignmentsRef = collection(db, COLLECTION);
+
+  const q = query(
+    assignmentsRef,
+    where("user_id", "==", userId),
+    orderBy("created_at", "desc"),
+  );
+
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((assignmentDoc) =>
+    mapAssignment(assignmentDoc.id, assignmentDoc.data()),
+  );
+}
+
+/*
+ * ============================================================
  * GET A SINGLE ASSIGNMENT
  * ============================================================
  */
@@ -133,6 +185,72 @@ export async function getOrganizationalAssignment(
   }
 
   return mapAssignment(snapshot.id, snapshot.data());
+}
+
+/*
+ * ============================================================
+ * CREATE ASSIGNMENT
+ * ============================================================
+ */
+
+export async function createOrganizationalAssignment(data: {
+  tenant_id: string;
+  user_id: string;
+  position: OrganizationalPosition;
+  scope_type: ScopeType;
+  scope_id: string;
+  status: OrganizationalAssignmentStatus;
+  assigned_by: string;
+  starts_at?: Timestamp | null;
+  ends_at?: Timestamp | null;
+}): Promise<string> {
+  const ref = await addDoc(collection(db, COLLECTION), {
+    ...data,
+    assigned_at: serverTimestamp(),
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  });
+
+  return ref.id;
+}
+
+/*
+ * ============================================================
+ * UPDATE ASSIGNMENT
+ * ============================================================
+ */
+
+export async function updateOrganizationalAssignment(
+  assignmentId: string,
+  data: Partial<{
+    position: OrganizationalPosition;
+    scope_type: ScopeType;
+    scope_id: string;
+    status: OrganizationalAssignmentStatus;
+    starts_at: Timestamp | null;
+    ends_at: Timestamp | null;
+  }>,
+): Promise<void> {
+  const assignmentRef = doc(db, COLLECTION, assignmentId);
+
+  await updateDoc(assignmentRef, {
+    ...data,
+    updated_at: serverTimestamp(),
+  });
+}
+
+/*
+ * ============================================================
+ * DELETE ASSIGNMENT
+ * ============================================================
+ */
+
+export async function deleteOrganizationalAssignment(
+  assignmentId: string,
+): Promise<void> {
+  const assignmentRef = doc(db, COLLECTION, assignmentId);
+
+  await deleteDoc(assignmentRef);
 }
 
 /*

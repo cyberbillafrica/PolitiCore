@@ -5,6 +5,9 @@ import {
   query,
   serverTimestamp,
   where,
+  updateDoc,
+  deleteDoc,
+  doc,
 } from "firebase/firestore";
 
 import { db } from "./config";
@@ -18,6 +21,38 @@ const COLLECTION = "permission_grants";
 // ============================================================
 
 export async function getUserPermissionGrants(
+  userId: string,
+): Promise<PermissionGrant[]> {
+  const q = query(collection(db, COLLECTION), where("user_id", "==", userId));
+
+  const snap = await getDocs(q);
+
+  return snap.docs.map((item) => ({
+    id: item.id,
+    ...item.data(),
+  })) as PermissionGrant[];
+}
+
+// ============================================================
+// GET ALL GRANTS (ADMIN)
+// ============================================================
+
+export async function getAllPermissionGrants(): Promise<PermissionGrant[]> {
+  const q = query(collection(db, COLLECTION));
+
+  const snap = await getDocs(q);
+
+  return snap.docs.map((item) => ({
+    id: item.id,
+    ...item.data(),
+  })) as PermissionGrant[];
+}
+
+// ============================================================
+// GET GRANTS BY USER ID (ADMIN)
+// ============================================================
+
+export async function getPermissionGrantsByUserId(
   userId: string,
 ): Promise<PermissionGrant[]> {
   const q = query(collection(db, COLLECTION), where("user_id", "==", userId));
@@ -56,4 +91,35 @@ export async function createPermissionGrant(data: {
   });
 
   return ref.id;
+}
+
+// ============================================================
+// UPDATE GRANT
+// ============================================================
+
+export async function updatePermissionGrant(
+  grantId: string,
+  data: Partial<{
+    permission: Permission;
+    granted: boolean;
+    scope_type: ScopeType | null;
+    scope_id: string | null;
+  }>,
+): Promise<void> {
+  const grantRef = doc(db, COLLECTION, grantId);
+
+  await updateDoc(grantRef, {
+    ...data,
+    updated_at: serverTimestamp(),
+  });
+}
+
+// ============================================================
+// DELETE GRANT
+// ============================================================
+
+export async function deletePermissionGrant(grantId: string): Promise<void> {
+  const grantRef = doc(db, COLLECTION, grantId);
+
+  await deleteDoc(grantRef);
 }
