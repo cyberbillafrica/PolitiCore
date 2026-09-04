@@ -310,6 +310,7 @@ export default function HomePage() {
                         src={article.featured_image}
                         alt={article.title}
                         fill
+                        unoptimized
                         className="object-cover transition-transform duration-300 group-hover:scale-105"
                         sizes="(max-width: 768px) 100vw, 33vw"
                       />

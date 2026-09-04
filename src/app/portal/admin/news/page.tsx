@@ -32,7 +32,7 @@ import {
   deleteNewsArticle,
   generateSlug,
 } from "@/lib/firebase/firestore";
-import { uploadFile } from "@/lib/firebase/storage";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import type { NewsArticle, NewsStatus } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -131,25 +131,15 @@ export default function AdminNewsCMSPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setError("Please select a valid image file (JPEG, PNG, WEBP).");
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Image size exceeds 5MB limit.");
-      return;
-    }
-
     try {
       setUploadingImage(true);
       setError(null);
-      const filePath = `news/${Date.now()}_${file.name}`;
-      const downloadUrl = await uploadFile(file, filePath);
+      const downloadUrl = await uploadToCloudinary(file, "ifeanyi-2027/news");
       setFormFeaturedImage(downloadUrl);
+      setSuccess("Image uploaded successfully to Cloudinary.");
     } catch (err: any) {
-      console.error("Failed to upload image:", err);
-      setError("Image upload failed. You can also paste an image URL directly.");
+      console.error("Failed to upload image to Cloudinary:", err);
+      setError(err.message || "Image upload failed. You can also paste an external image URL directly.");
     } finally {
       setUploadingImage(false);
     }
@@ -696,7 +686,7 @@ export default function AdminNewsCMSPage() {
                       <span>{uploadingImage ? "Uploading..." : "Upload"}</span>
                       <input
                         type="file"
-                        accept="image/png, image/jpeg, image/webp"
+                        accept="image/jpeg,image/png,image/webp"
                         onChange={handleImageUpload}
                         disabled={uploadingImage}
                         className="hidden"
@@ -710,6 +700,7 @@ export default function AdminNewsCMSPage() {
                         src={formFeaturedImage}
                         alt="Featured image preview"
                         fill
+                        unoptimized
                         className="object-cover"
                       />
                       <button
@@ -794,6 +785,7 @@ export default function AdminNewsCMSPage() {
                     src={previewArticle.featured_image}
                     alt={previewArticle.title}
                     fill
+                    unoptimized
                     className="object-cover"
                   />
                 </div>
