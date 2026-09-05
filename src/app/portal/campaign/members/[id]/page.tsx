@@ -35,6 +35,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { hasPermission } from "@/lib/permissions";
@@ -79,13 +96,20 @@ export default function MemberDetailPage() {
   const router = useRouter();
   const memberId = params.id as string;
 
-  const { profile, user } = useAuth();
+  const {
+    profile,
+    user,
+    assignments: currentAssignments,
+    grants: currentGrants,
+  } = useAuth();
 
   const [member, setMember] = useState<ScopedCampaignMember | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [assignments, setAssignments] = useState<OrganizationalAssignment[]>([]);
+  const [assignments, setAssignments] = useState<OrganizationalAssignment[]>(
+    [],
+  );
   const [permissionGrants, setPermissionGrants] = useState<PermissionGrant[]>(
     [],
   );
@@ -119,26 +143,26 @@ export default function MemberDetailPage() {
   const canManageMembers = hasPermission(
     {
       profile: profile ?? null,
-      assignments: profile?.organizationalAssignments ?? [],
-      grants: profile?.permissionGrants ?? [],
+      assignments: currentAssignments,
+      grants: currentGrants,
     },
-    "manage_campaign_members",
+    "manage_members",
   );
 
   const canManageAssignments = hasPermission(
     {
       profile: profile ?? null,
-      assignments: profile?.organizationalAssignments ?? [],
-      grants: profile?.permissionGrants ?? [],
+      assignments: currentAssignments,
+      grants: currentGrants,
     },
-    "manage_organizational_assignments",
+    "manage_organization",
   );
 
   const canManagePermissions = hasPermission(
     {
       profile: profile ?? null,
-      assignments: profile?.organizationalAssignments ?? [],
-      grants: profile?.permissionGrants ?? [],
+      assignments: currentAssignments,
+      grants: currentGrants,
     },
     "manage_permissions",
   );
@@ -397,11 +421,9 @@ export default function MemberDetailPage() {
                 open={membershipDialogOpen}
                 onOpenChange={setMembershipDialogOpen}
               >
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Edit3 className="mr-2 h-4 w-4" />
-                    Manage
-                  </Button>
+                <DialogTrigger render={<Button variant="outline" size="sm" />}>
+                  <Edit3 className="mr-2 h-4 w-4" />
+                  Manage
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
@@ -446,11 +468,9 @@ export default function MemberDetailPage() {
             <CardTitle className="text-lg">Access Role</CardTitle>
             {canEdit && (
               <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Key className="mr-2 h-4 w-4" />
-                    Manage
-                  </Button>
+                <DialogTrigger render={<Button variant="outline" size="sm" />}>
+                  <Key className="mr-2 h-4 w-4" />
+                  Manage
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
@@ -473,7 +493,9 @@ export default function MemberDetailPage() {
         <CardContent>
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-gray-400" />
-            <span className="font-medium">{formatRole(member.access_role)}</span>
+            <span className="font-medium">
+              {formatRole(member.access_role)}
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -532,11 +554,9 @@ export default function MemberDetailPage() {
                 open={assignmentDialogOpen}
                 onOpenChange={setAssignmentDialogOpen}
               >
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Assignment
-                  </Button>
+                <DialogTrigger render={<Button variant="outline" size="sm" />}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Assignment
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl">
                   <DialogHeader>
@@ -605,11 +625,9 @@ export default function MemberDetailPage() {
                 open={permissionDialogOpen}
                 onOpenChange={setPermissionDialogOpen}
               >
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Grant Permission
-                  </Button>
+                <DialogTrigger render={<Button variant="outline" size="sm" />}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Grant Permission
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
@@ -640,7 +658,9 @@ export default function MemberDetailPage() {
         </CardHeader>
         <CardContent>
           {permissionGrants.length === 0 ? (
-            <p className="text-sm text-gray-500">No explicit permission grants</p>
+            <p className="text-sm text-gray-500">
+              No explicit permission grants
+            </p>
           ) : (
             <div className="space-y-3">
               {permissionGrants.map((grant) => (
@@ -649,8 +669,8 @@ export default function MemberDetailPage() {
                   grant={grant}
                   canEdit={canEdit && canManagePermissions}
                   onRevoke={async () => {
-                    await deletePermissionGrant(grant.id);
-                    loadPermissionGrants();
+                    setDeleteTarget({ type: "grant", id: grant.id });
+                    setDeleteConfirmOpen(true);
                   }}
                 />
               ))}
@@ -663,10 +683,7 @@ export default function MemberDetailPage() {
           DELETE CONFIRMATION
           ====================================================== */}
 
-      <AlertDialog
-        open={deleteConfirmOpen}
-        onOpenChange={setDeleteConfirmOpen}
-      >
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Action</AlertDialogTitle>
@@ -684,7 +701,8 @@ export default function MemberDetailPage() {
                   await deleteOrganizationalAssignment(deleteTarget.id);
                   loadAssignments();
                 } else if (deleteTarget?.type === "grant") {
-                  // Handled inline
+                  await deletePermissionGrant(deleteTarget.id);
+                  loadPermissionGrants();
                 }
                 setDeleteConfirmOpen(false);
                 setDeleteTarget(null);
@@ -956,9 +974,8 @@ function AssignmentManager({
   }) => Promise<void>;
   onClose: () => void;
 }) {
-  const [position, setPosition] = useState<OrganizationalPosition>(
-    "campaign_member",
-  );
+  const [position, setPosition] =
+    useState<OrganizationalPosition>("campaign_member");
   const [scopeType, setScopeType] = useState<ScopeType>("ward");
   const [scopeId, setScopeId] = useState<string>("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
@@ -1056,7 +1073,10 @@ function AssignmentManager({
       {scopeType === "ward" && (
         <div className="grid gap-2">
           <Label>Ward</Label>
-          <Select value={scopeId} onValueChange={setScopeId}>
+          <Select
+            value={scopeId}
+            onValueChange={(value) => setScopeId(value ?? "")}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select a ward" />
             </SelectTrigger>
@@ -1158,7 +1178,9 @@ function AssignmentRow({
         </div>
         <div>
           <p className="font-medium">
-            {assignment.position.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+            {assignment.position
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (l) => l.toUpperCase())}
           </p>
           <p className="text-sm text-gray-500">{getScopeDisplay()}</p>
           <Badge variant={isActive ? "default" : "secondary"} className="mt-1">
@@ -1222,8 +1244,8 @@ function PermissionGrantManager({
 
   const permissions: Permission[] = [
     "view_dashboard",
-    "manage_campaign_members",
-    "manage_organizational_assignments",
+    "manage_members",
+    "manage_organization",
     "manage_permissions",
     "create_activity",
     "manage_activity",
@@ -1255,7 +1277,9 @@ function PermissionGrantManager({
           <SelectContent>
             {permissions.map((perm) => (
               <SelectItem key={perm} value={perm}>
-                {perm.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                {perm
+                  .replace(/_/g, " ")
+                  .replace(/\b\w/g, (l) => l.toUpperCase())}
               </SelectItem>
             ))}
           </SelectContent>
@@ -1284,7 +1308,7 @@ function PermissionGrantManager({
         </Select>
       </div>
 
-      {scopeType && scopeType !== "" && (
+      {scopeType && (
         <div className="grid gap-2">
           <Label>Scope ID</Label>
           <Input
@@ -1328,7 +1352,9 @@ function PermissionGrantRow({
         </div>
         <div>
           <p className="font-medium">
-            {grant.permission.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+            {grant.permission
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (l) => l.toUpperCase())}
           </p>
           {grant.scope_type && (
             <p className="text-sm text-gray-500">
