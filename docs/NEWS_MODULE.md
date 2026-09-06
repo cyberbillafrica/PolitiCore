@@ -59,7 +59,7 @@ export interface NewsArticle {
 2. **Published:** Publicly visible on `/news` and accessible via `/news/[slug]`.
 3. **Scheduled:** Retains future publication timestamp (`scheduled_at`).
    - *Limitation Note:* Automatic status transition from `scheduled` to `published` at the specified time requires a trusted scheduled process/Cloud Function. Client-side JavaScript must not be used as an authoritative publishing scheduler.
-4. **Archived:** Retained for record keeping but removed from public listing and public detail pages.
+4. **Archived:** Retained for record keeping and history but removed from public listing and public detail pages.
 
 ---
 
