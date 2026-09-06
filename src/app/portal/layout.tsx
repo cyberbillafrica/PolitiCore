@@ -772,7 +772,7 @@ export default function PortalLayout({
               </div>
 
               <span className="text-lg font-bold text-apc-primary">
-                Ifeanyichukwu 2027
+                Nwakaibeya 2027
               </span>
             </Link>
           </div>
