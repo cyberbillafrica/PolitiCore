@@ -29,6 +29,7 @@ import {
   CalendarDays,
   Flag,
   Network,
+  Image,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -244,12 +245,12 @@ const adminNavigation = [
     href: "/portal/admin/manifesto",
     icon: FileText,
   },
- {
+  {
     name: "Gallery",
     href: "/portal/admin/gallery",
     icon: Image,
   },
-   
+
   {
     name: "Broadcast",
     href: "/portal/admin/announcements",
