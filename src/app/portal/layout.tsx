@@ -165,20 +165,6 @@ const navigation: NavItem[] = [
       },
 
       {
-        name: "Communications",
-        href: "/portal/campaign/communications",
-        icon: Megaphone,
-        permission: "view_notices",
-      },
-
-      {
-        name: "Documents",
-        href: "/portal/campaign/documents",
-        icon: Flag,
-        permission: "view_documents",
-      },
-
-      {
         name: "Campaign Calendar",
         href: "/portal/campaign/calendar",
         icon: CalendarDays,
@@ -258,7 +244,12 @@ const adminNavigation = [
     href: "/portal/admin/manifesto",
     icon: FileText,
   },
-
+ {
+    name: "Gallery",
+    href: "/portal/admin/gallery",
+    icon: Image,
+  },
+   
   {
     name: "Broadcast",
     href: "/portal/admin/announcements",

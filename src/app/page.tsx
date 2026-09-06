@@ -18,74 +18,64 @@ import {
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ElectionCountdown from "@/components/home/ElectionCountdown";
-import { getPublishedNews } from "@/lib/firebase/firestore";
-import type { NewsArticle } from "@/types";
-import { getPublishedEvents } from "@/lib/firebase/portal-content";
 
+import { getPublishedNews } from "@/lib/firebase/firestore";
+import { getEvents } from "@/lib/firebase/events";
+import { getCurrentTenant } from "@/lib/firebase/tenants";
+
+import type { NewsArticle, EventData } from "@/types";
 
 export default function HomePage() {
   const [latestNews, setLatestNews] = useState<NewsArticle[]>([]);
+  const [events, setEvents] = useState<EventData[]>([]);
   const [newsLoading, setNewsLoading] = useState(true);
 
   useEffect(() => {
-    async function loadLatestNews() {
+    async function loadHomepageData() {
       try {
         setNewsLoading(true);
-        const data = await getPublishedNews(3);
-        setLatestNews(data);
+
+        const tenant = await getCurrentTenant();
+
+        const [newsData, eventsData] = await Promise.all([
+          getPublishedNews(3),
+          getEvents(tenant.id),
+        ]);
+
+        setLatestNews(newsData);
+        setEvents(eventsData.filter((event) => event.status === "published"));
       } catch (err) {
-        console.error("Failed to load homepage news:", err);
+        console.error("Failed to load homepage data:", err);
       } finally {
         setNewsLoading(false);
       }
     }
 
-    loadLatestNews();
+    loadHomepageData();
   }, []);
 
   function formatDate(rawTimestamp: any) {
     if (!rawTimestamp) return "Recent";
+
     let date: Date;
+
     if (rawTimestamp.seconds) {
       date = new Date(rawTimestamp.seconds * 1000);
-    } else if (typeof rawTimestamp === "string" || typeof rawTimestamp === "number") {
+    } else if (
+      typeof rawTimestamp === "string" ||
+      typeof rawTimestamp === "number"
+    ) {
       date = new Date(rawTimestamp);
     } else {
       return "Recent";
     }
+
     return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
     });
   }
-
-  const events = [
-    {
-      id: 1,
-      title: "Ward-to-Ward Campaign Tour",
-      date: "2026-08-15",
-      time: "10:00 AM",
-      venue: "Agbani Town Hall",
-      ward: "Agbani",
-    },
-    {
-      id: 2,
-      title: "Youth Empowerment Summit",
-      date: "2026-08-20",
-      time: "11:00 AM",
-      venue: "Community Center, Akpugo",
-      ward: "Akpugo",
-    },
-    {
-      id: 3,
-      title: "Women's Town Hall Meeting",
-      date: "2026-08-25",
-      time: "2:00 PM",
-      venue: "Ozalla Civic Center",
-      ward: "Ozalla",
-    },
-  ];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -291,10 +281,14 @@ export default function HomePage() {
               <p className="text-sm font-medium">Loading campaign updates…</p>
             </div>
           ) : latestNews.length === 0 ? (
-            <div className="rounded-2xl bg-white p-8 text-center border shadow-sm">
-              <FileText className="mx-auto h-8 w-8 text-gray-300 mb-2" />
-              <p className="text-base font-medium text-gray-700">No published news articles yet.</p>
-              <p className="text-sm text-gray-500 mt-1">
+            <div className="rounded-2xl border bg-white p-8 text-center shadow-sm">
+              <FileText className="mx-auto mb-2 h-8 w-8 text-gray-300" />
+
+              <p className="text-base font-medium text-gray-700">
+                No published news articles yet.
+              </p>
+
+              <p className="mt-1 text-sm text-gray-500">
                 Check back soon for news and updates from the campaign team.
               </p>
             </div>
@@ -304,7 +298,7 @@ export default function HomePage() {
                 <Link
                   key={article.id}
                   href={`/news/${article.slug}`}
-                  className="group flex flex-col overflow-hidden rounded-xl bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-md border border-gray-100"
+                  className="group flex flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-md"
                 >
                   {article.featured_image ? (
                     <div className="relative aspect-[16/9] w-full overflow-hidden bg-gray-100">
@@ -318,8 +312,10 @@ export default function HomePage() {
                       />
                     </div>
                   ) : (
-                    <div className="relative aspect-[16/9] w-full bg-gradient-to-br from-apc-primary/10 to-apc-secondary/10 flex items-center justify-center">
-                      <span className="text-2xl font-bold text-apc-primary/20">Ifeanyi 2027</span>
+                    <div className="relative flex aspect-[16/9] w-full items-center justify-center bg-gradient-to-br from-apc-primary/10 to-apc-secondary/10">
+                      <span className="text-2xl font-bold text-apc-primary/20">
+                        Ifeanyi 2027
+                      </span>
                     </div>
                   )}
 
@@ -327,21 +323,24 @@ export default function HomePage() {
                     <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5 text-apc-primary" />
+
                         {formatDate(article.published_at || article.created_at)}
                       </span>
+
                       {article.category && (
-                        <span className="flex items-center gap-1 rounded bg-apc-primary/10 px-2 py-0.5 text-apc-primary font-medium">
+                        <span className="flex items-center gap-1 rounded bg-apc-primary/10 px-2 py-0.5 font-medium text-apc-primary">
                           <Tag className="h-3 w-3" />
+
                           {article.category}
                         </span>
                       )}
                     </div>
 
-                    <h3 className="mb-2 text-lg font-bold text-gray-900 transition-colors group-hover:text-apc-primary line-clamp-2">
+                    <h3 className="mb-2 line-clamp-2 text-lg font-bold text-gray-900 transition-colors group-hover:text-apc-primary">
                       {article.title}
                     </h3>
 
-                    <p className="flex-1 text-sm text-gray-600 line-clamp-3 leading-relaxed mb-4">
+                    <p className="mb-4 line-clamp-3 flex-1 text-sm leading-relaxed text-gray-600">
                       {article.excerpt || article.content}
                     </p>
 
@@ -364,44 +363,60 @@ export default function HomePage() {
             Upcoming Events
           </h2>
 
-          <div className="grid gap-8 md:grid-cols-3">
-            {events.map((event) => (
-              <div
-                key={event.id}
-                className="rounded-xl bg-gray-50 p-6 transition-shadow hover:shadow-md"
-              >
-                <div className="mb-4 flex items-center space-x-2 text-apc-green">
-                  <Calendar className="h-5 w-5" />
+          {events.length === 0 ? (
+            <div className="rounded-2xl bg-gray-50 p-8 text-center">
+              <Calendar className="mx-auto mb-3 h-8 w-8 text-gray-300" />
 
-                  <span className="font-medium">{event.date}</span>
-                </div>
+              <p className="text-base font-medium text-gray-700">
+                No upcoming events at the moment.
+              </p>
 
-                <h3 className="mb-3 text-xl font-semibold text-apc-primary">
-                  {event.title}
-                </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Check back soon for campaign events and community engagements.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-8 md:grid-cols-3">
+              {events.map((event) => (
+                <div
+                  key={event.id}
+                  className="rounded-xl bg-gray-50 p-6 transition-shadow hover:shadow-md"
+                >
+                  <div className="mb-4 flex items-center space-x-2 text-apc-green">
+                    <Calendar className="h-5 w-5" />
 
-                <div className="space-y-2 text-gray-600">
-                  <div className="flex items-center space-x-2">
-                    <MapPin className="h-4 w-4" />
-
-                    <span className="text-sm">{event.venue}</span>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium">
-                      {event.ward} Ward
+                    <span className="font-medium">
+                      {formatDate(event.date)}
                     </span>
                   </div>
 
-                  <div className="text-sm text-gray-500">{event.time}</div>
-                </div>
+                  <h3 className="mb-3 text-xl font-semibold text-apc-primary">
+                    {event.title}
+                  </h3>
 
-                <button className="mt-4 w-full rounded-lg bg-apc-primary px-4 py-2 text-white transition-colors hover:bg-apc-dark">
-                  RSVP
-                </button>
-              </div>
-            ))}
-          </div>
+                  <div className="space-y-2 text-gray-600">
+                    <div className="flex items-center space-x-2">
+                      <MapPin className="h-4 w-4" />
+
+                      <span className="text-sm">{event.venue}</span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-medium">
+                        {event.ward} Ward
+                      </span>
+                    </div>
+
+                    <div className="text-sm text-gray-500">{event.time}</div>
+                  </div>
+
+                  <button className="mt-4 w-full rounded-lg bg-apc-primary px-4 py-2 text-white transition-colors hover:bg-apc-dark">
+                    RSVP
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
