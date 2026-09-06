@@ -16,12 +16,15 @@ import {
 } from "firebase/firestore";
 
 import { db } from "./config";
+import { getAnnouncements as getPortalAnnouncements } from "./portal-content";
+import { getCurrentTenant } from "./tenants";
+
 
 // ============================================================
 // ORGANIZATIONAL ASSIGNMENTS
 // ============================================================
 
-import type { OrganizationalAssignment } from "@/types";
+import type { Announcement, OrganizationalAssignment } from "@/types";
 
 /**
  * Get all active organizational assignments for a user.
@@ -497,6 +500,26 @@ export async function updateNewsArticle(
 export async function deleteNewsArticle(id: string): Promise<void> {
   const { deleteDoc } = await import("firebase/firestore");
   await deleteDoc(doc(db, "news", id));
+}
+
+
+
+/**
+ * Get announcements for the current tenant, filtered by user scope
+ */
+export async function getUserAnnouncements(userProfile: any): Promise<Announcement[]> {
+  const tenant = await getCurrentTenant();
+  const allAnnouncements = await getPortalAnnouncements(tenant.id);
+  
+  // Filter by scope
+  return allAnnouncements.filter((announcement) => {
+    if (announcement.scope === "general") return true;
+    if (announcement.scope === "admins" && userProfile?.access_role === "admin") return true;
+    if (announcement.scope === "campaign_members" && userProfile?.membership_types?.includes("campaign_member")) return true;
+    if (announcement.scope === "social_members" && userProfile?.membership_types?.includes("social_member")) return true;
+    if (announcement.scope === "election_officers" && userProfile?.access_role === "election_officer") return true;
+    return false;
+  });
 }
 
 // ─────────────────────────────────────────────

@@ -356,3 +356,91 @@ export interface ManifestoData {
   created_at?: unknown;
   updated_at?: unknown;
 }
+
+// ============================================================
+// BIOGRAPHY
+// ============================================================
+
+export interface BiographyData {
+  tenant_id: string;
+  full_name: string;
+  title: string; // e.g., "APC Candidate, Nkanu West"
+  about: string; // Main biography text
+  image_url?: string | null;
+  stats: {
+    years_experience: number;
+    communities_served: number;
+    volunteers: number;
+  };
+  social_links?: {
+    facebook?: string;
+    x?: string;
+    instagram?: string;
+    tiktok?: string;
+  };
+  status: "draft" | "published";
+  created_at?: unknown;
+  updated_at?: unknown;
+}
+
+// ============================================================
+// GALLERY
+// ============================================================
+
+export interface GalleryImage {
+  id: string;
+  url: string;
+  title: string;
+  description?: string;
+  uploaded_at: unknown;
+}
+
+export interface GalleryData {
+  tenant_id: string;
+  images: GalleryImage[];
+  updated_at?: unknown;
+}
+
+// ============================================================
+// ANNOUNCEMENTS & EVENTS (Combined)
+// ============================================================
+
+export type AnnouncementScope =
+  | "general"
+  | "campaign_members"
+  | "social_members"
+  | "election_officers"
+  | "admins";
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  scope: AnnouncementScope; // Who sees this in the portal
+  type: "announcement"; // Discriminator
+  created_at?: unknown;
+  updated_at?: unknown;
+}
+
+export interface EventData {
+  id: string;
+  title: string;
+  description: string;
+  date: string; // ISO date string
+  time: string;
+  venue: string;
+  ward: string;
+  type: "event"; // Discriminator
+  status: "draft" | "published";
+  created_at?: unknown;
+  updated_at?: unknown;
+}
+
+// Union type for combined admin management
+export type PortalContent = Announcement | EventData;
+
+export interface PortalContentData {
+  tenant_id: string;
+  items: PortalContent[];
+  updated_at?: unknown;
+}

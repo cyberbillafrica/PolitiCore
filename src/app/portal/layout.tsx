@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { getUserAnnouncements } from "@/lib/firebase/firestore";
 
 import {
   LayoutDashboard,
@@ -36,7 +37,7 @@ import { logOut } from "@/lib/firebase/auth";
 import { getElectoralLocation } from "@/lib/constants";
 
 import type { Ward, PollingUnit } from "@/data/electoral";
-import type { Permission } from "@/types";
+import type { Permission, Announcement } from "@/types";
 
 type NavLeaf = {
   name: string;
@@ -259,7 +260,7 @@ const adminNavigation = [
   },
 
   {
-    name: "Announcements",
+    name: "Broadcast",
     href: "/portal/admin/announcements",
     icon: Megaphone,
   },
@@ -758,6 +759,7 @@ export default function PortalLayout({
             <UserPanel
               userName={userName}
               roleLabel={roleLabel}
+              profile={profile}
               electoralLocation={electoralLocation}
               onLogout={handleLogout}
               loggingOut={loggingOut}
@@ -791,6 +793,7 @@ export default function PortalLayout({
             <UserPanel
               userName={userName}
               roleLabel={roleLabel}
+              profile={profile}
               electoralLocation={electoralLocation}
               onLogout={handleLogout}
               loggingOut={loggingOut}
@@ -835,6 +838,7 @@ export default function PortalLayout({
 function UserPanel({
   userName,
   roleLabel,
+  profile,
   electoralLocation,
   onLogout,
   loggingOut,
@@ -842,11 +846,25 @@ function UserPanel({
 }: {
   userName: string;
   roleLabel: string;
+  profile: any;
   electoralLocation: ElectoralLocation | null;
   onLogout: () => void;
   loggingOut: boolean;
   logoutError: string | null;
 }) {
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    getUserAnnouncements(profile)
+      .then(setAnnouncements)
+      .catch((error) => {
+        console.error("Failed to load announcements:", error);
+        setAnnouncements([]);
+      });
+  }, [profile]);
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-3">
@@ -906,6 +924,29 @@ function UserPanel({
         <p className="mb-2 text-xs text-red-600" role="alert">
           {logoutError}
         </p>
+      )}
+
+      {announcements.length > 0 && (
+        <div className="mb-3 space-y-2 border-t border-gray-100 pt-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Announcements
+          </p>
+
+          {announcements.slice(0, 2).map((announcement) => (
+            <div
+              key={announcement.id}
+              className="rounded-lg bg-apc-light/50 p-2"
+            >
+              <p className="text-xs font-medium text-gray-800">
+                {announcement.title}
+              </p>
+
+              <p className="mt-1 line-clamp-2 text-xs text-gray-600">
+                {announcement.content}
+              </p>
+            </div>
+          ))}
+        </div>
       )}
 
       <button

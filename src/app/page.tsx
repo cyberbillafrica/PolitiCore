@@ -20,6 +20,8 @@ import Footer from "@/components/layout/Footer";
 import ElectionCountdown from "@/components/home/ElectionCountdown";
 import { getPublishedNews } from "@/lib/firebase/firestore";
 import type { NewsArticle } from "@/types";
+import { getPublishedEvents } from "@/lib/firebase/portal-content";
+
 
 export default function HomePage() {
   const [latestNews, setLatestNews] = useState<NewsArticle[]>([]);
