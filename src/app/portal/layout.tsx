@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
+  UsersRound,
   CheckSquare,
   TrendingUp,
   Vote,
@@ -252,6 +253,12 @@ const adminNavigation = [
   },
 
   {
+    name: "Manifesto",
+    href: "/portal/admin/manifesto",
+    icon: FileText,
+  },
+
+  {
     name: "Announcements",
     href: "/portal/admin/announcements",
     icon: Megaphone,
@@ -266,7 +273,7 @@ const adminNavigation = [
   {
     name: "Coordination",
     href: "/portal/campaign/coordination",
-    icon: Settings,
+    icon: UsersRound,
   },
 
   {

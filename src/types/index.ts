@@ -327,3 +327,32 @@ export interface UserProfile {
   created_at?: unknown;
   updated_at?: unknown;
 }
+
+// ============================================================
+// MANIFESTO
+// ============================================================
+
+export interface ManifestoSection {
+  id: string;
+  title: string;
+  icon?: string; // emoji
+  description: string;
+  points: string[];
+}
+
+export interface ManifestoData {
+  tenant_id: string;
+  title: string;
+  subtitle: string;
+  introduction: string;
+  candidate_name: string;
+  candidate_title: string;
+  sections: ManifestoSection[];
+  closing: string;
+  call_to_action: string;
+  call_to_action_link: string;
+  pdf_url?: string | null;
+  status: "draft" | "published";
+  created_at?: unknown;
+  updated_at?: unknown;
+}

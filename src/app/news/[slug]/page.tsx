@@ -1,11 +1,15 @@
-"use client";
+// src/app/news/[slug]/page.tsx
 
-import { useEffect, useState, use } from "react";
+import { cache } from "react";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+
+import { Calendar, Tag, ArrowLeft, User, MessageCircle } from "lucide-react";
+
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { Calendar, Tag, ArrowLeft, User, Loader2, AlertCircle } from "lucide-react";
 import { getNewsArticleBySlug } from "@/lib/firebase/firestore";
 import type { NewsArticle } from "@/types";
 
@@ -15,56 +19,153 @@ interface PageProps {
   }>;
 }
 
-export default function NewsArticleDetailPage({ params }: PageProps) {
-  const { slug } = use(params);
-  const [article, setArticle] = useState<NewsArticle | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL || "https://ifeanyichukwu-2027.vercel.app/";
 
-  useEffect(() => {
-    async function loadArticle() {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await getNewsArticleBySlug(slug);
-        if (!data || data.status !== "published") {
-          setArticle(null);
-        } else {
-          setArticle(data);
-        }
-      } catch (err: any) {
-        console.error("Error loading article:", err);
-        setError("Unable to load article. Please check your connection and try again.");
-      } finally {
-        setLoading(false);
-      }
-    }
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
 
-    loadArticle();
-  }, [slug]);
+function formatDate(rawTimestamp: any) {
+  if (!rawTimestamp) return "Recent";
 
-  function formatDate(rawTimestamp: any) {
-    if (!rawTimestamp) return "Recent";
-    let date: Date;
-    if (rawTimestamp.seconds) {
-      date = new Date(rawTimestamp.seconds * 1000);
-    } else if (typeof rawTimestamp === "string" || typeof rawTimestamp === "number") {
-      date = new Date(rawTimestamp);
-    } else {
-      return "Recent";
-    }
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+  let date: Date;
+
+  if (rawTimestamp.seconds) {
+    date = new Date(rawTimestamp.seconds * 1000);
+  } else if (
+    typeof rawTimestamp === "string" ||
+    typeof rawTimestamp === "number"
+  ) {
+    date = new Date(rawTimestamp);
+  } else {
+    return "Recent";
   }
+
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function getArticleUrl(slug: string) {
+  return `${SITE_URL}/news/${slug}`;
+}
+
+function getAbsoluteImageUrl(image?: string) {
+  if (!image) return undefined;
+
+  if (image.startsWith("http://") || image.startsWith("https://")) {
+    return image;
+  }
+
+  return `${SITE_URL}${image.startsWith("/") ? "" : "/"}${image}`;
+}
+
+// ─────────────────────────────────────────────
+// CACHED FETCH – prevents duplicate requests
+// ─────────────────────────────────────────────
+
+const getArticle = cache(async (slug: string) => {
+  const article = await getNewsArticleBySlug(slug);
+
+  if (!article || article.status !== "published") {
+    return null;
+  }
+
+  return article;
+});
+
+// ─────────────────────────────────────────────
+// METADATA – SEO + Social Previews
+// ─────────────────────────────────────────────
+
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const article = await getArticle(slug);
+
+  if (!article) {
+    return {
+      title: "Article Not Found | Campaign News",
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
+  }
+
+  const articleUrl = getArticleUrl(article.slug);
+  const imageUrl = getAbsoluteImageUrl(article.featured_image ?? undefined);
+
+  const description =
+    article.excerpt ||
+    article.content?.substring(0, 160) ||
+    "Latest campaign news and updates.";
+
+  return {
+    title: `${article.title} | Campaign News`,
+    description,
+
+    alternates: {
+      canonical: articleUrl,
+    },
+
+    openGraph: {
+      title: article.title,
+      description,
+      url: articleUrl,
+      siteName: "Ifeanyi 2027 Campaign News",
+      type: "article",
+
+      ...(imageUrl && {
+        images: [
+          {
+            url: imageUrl,
+            width: 1200,
+            height: 675,
+            alt: article.title,
+          },
+        ],
+      }),
+    },
+
+    twitter: {
+      card: imageUrl ? "summary_large_image" : "summary",
+      title: article.title,
+      description,
+
+      ...(imageUrl && {
+        images: [imageUrl],
+      }),
+    },
+  };
+}
+
+// ─────────────────────────────────────────────
+// PAGE COMPONENT
+// ─────────────────────────────────────────────
+
+export default async function NewsArticleDetailPage({ params }: PageProps) {
+  const { slug } = await params;
+
+  const article = await getArticle(slug);
+
+  if (!article) {
+    notFound();
+  }
+
+  const articleUrl = getArticleUrl(article.slug);
+  const shareText = `${article.title}\n\nRead the full article:`;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Header />
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-12 sm:px-6 lg:px-8">
+        {/* Back Link */}
         <div className="mb-8">
           <Link
             href="/news"
@@ -75,87 +176,113 @@ export default function NewsArticleDetailPage({ params }: PageProps) {
           </Link>
         </div>
 
-        {loading && (
-          <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 text-gray-500">
-            <Loader2 className="h-8 w-8 animate-spin text-apc-primary" />
-            <p className="text-sm font-medium">Loading article…</p>
-          </div>
-        )}
+        <article className="overflow-hidden rounded-2xl bg-white shadow-sm border border-gray-100 p-6 sm:p-10">
+          {/* Category */}
+          {article.category && (
+            <div className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-apc-primary/10 px-3 py-1 text-xs font-semibold text-apc-primary">
+              <Tag className="h-3.5 w-3.5" />
+              {article.category}
+            </div>
+          )}
 
-        {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center text-red-700 my-8">
-            <AlertCircle className="mx-auto h-8 w-8 text-red-500 mb-2" />
-            <p className="font-semibold">{error}</p>
-          </div>
-        )}
+          {/* Title */}
+          <h1 className="text-3xl font-extrabold text-gray-900 sm:text-4xl leading-tight">
+            {article.title}
+          </h1>
 
-        {!loading && !error && !article && (
-          <div className="rounded-2xl bg-white p-12 text-center shadow-sm border my-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Article Not Found</h2>
-            <p className="text-gray-600 mb-6">
-              The article you are looking for does not exist or is no longer published.
-            </p>
-            <Link
-              href="/news"
-              className="inline-flex items-center gap-2 rounded-lg bg-apc-primary px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-apc-dark"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Return to News Updates
-            </Link>
-          </div>
-        )}
+          {/* Meta */}
+          <div className="mt-4 mb-8 flex flex-wrap items-center gap-4 border-b border-gray-100 pb-6 text-sm text-gray-500">
+            <span className="flex items-center gap-1.5">
+              <Calendar className="h-4 w-4 text-apc-primary" />
+              {formatDate(article.published_at || article.created_at)}
+            </span>
 
-        {!loading && !error && article && (
-          <article className="overflow-hidden rounded-2xl bg-white shadow-sm border border-gray-100 p-6 sm:p-10">
-            {article.category && (
-              <div className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-apc-primary/10 px-3 py-1 text-xs font-semibold text-apc-primary">
-                <Tag className="h-3.5 w-3.5" />
-                {article.category}
-              </div>
-            )}
-
-            <h1 className="text-3xl font-extrabold text-gray-900 sm:text-4xl leading-tight">
-              {article.title}
-            </h1>
-
-            <div className="mt-4 mb-8 flex flex-wrap items-center gap-4 border-b border-gray-100 pb-6 text-sm text-gray-500">
+            {article.author && (
               <span className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4 text-apc-primary" />
-                {formatDate(article.published_at || article.created_at)}
+                <User className="h-4 w-4 text-apc-primary" />
+                {article.author}
               </span>
-              {article.author && (
-                <span className="flex items-center gap-1.5">
-                  <User className="h-4 w-4 text-apc-primary" />
-                  {article.author}
-                </span>
-              )}
-            </div>
-
-            {article.featured_image && (
-              <div className="relative mb-8 aspect-[16/9] w-full overflow-hidden rounded-xl bg-gray-100">
-                <Image
-                  src={article.featured_image}
-                  alt={article.title}
-                  fill
-                  priority
-                  unoptimized
-                  className="object-cover"
-                  sizes="(max-width: 1024px) 100vw, 800px"
-                />
-              </div>
             )}
+          </div>
 
-            {article.excerpt && (
-              <p className="mb-8 text-lg font-medium text-gray-700 leading-relaxed italic border-l-4 border-apc-primary pl-4 py-1 bg-gray-50/50 rounded-r">
-                {article.excerpt}
-              </p>
-            )}
-
-            <div className="prose prose-lg max-w-none text-gray-800 leading-relaxed whitespace-pre-wrap">
-              {article.content}
+          {/* Featured Image */}
+          {article.featured_image && (
+            <div className="relative mb-8 aspect-[16/9] w-full overflow-hidden rounded-xl bg-gray-100">
+              <Image
+                src={article.featured_image}
+                alt={article.title}
+                fill
+                priority
+                unoptimized
+                className="object-cover"
+                sizes="(max-width: 1024px) 100vw, 800px"
+              />
             </div>
-          </article>
-        )}
+          )}
+
+          {/* Excerpt */}
+          {article.excerpt && (
+            <p className="mb-8 text-lg font-medium text-gray-700 leading-relaxed italic border-l-4 border-apc-primary pl-4 py-1 bg-gray-50/50 rounded-r">
+              {article.excerpt}
+            </p>
+          )}
+
+          {/* Content */}
+          <div className="prose prose-lg max-w-none text-gray-800 leading-relaxed whitespace-pre-wrap">
+            {article.content}
+          </div>
+
+          {/* Share Section */}
+          <div className="mt-12 border-t border-gray-200 pt-8">
+            <h2 className="text-xl font-bold text-gray-900">
+              Share with friends
+            </h2>
+
+            <p className="mt-1 mb-4 text-sm text-gray-500">
+              Share this news update with your friends and community.
+            </p>
+
+            <div className="flex flex-wrap gap-3">
+              {/* WhatsApp */}
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(
+                  `${shareText}\n${articleUrl}`,
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#1ebe5d] hover:-translate-y-0.5"
+              >
+                <MessageCircle className="h-4 w-4" />
+                WhatsApp
+              </a>
+
+              {/* Facebook */}
+              <a
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+                  articleUrl,
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#1877F2] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#166fe5] hover:-translate-y-0.5"
+              >
+                <span className="text-base font-bold leading-none">f</span>
+                Facebook
+              </a>
+
+              {/* X */}
+              <a
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
+                  shareText,
+                )}&url=${encodeURIComponent(articleUrl)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-gray-800 hover:-translate-y-0.5"
+              >
+                <span className="text-base font-bold leading-none">𝕏</span>X
+              </a>
+            </div>
+          </div>
+        </article>
       </main>
 
       <Footer />

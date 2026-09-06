@@ -87,7 +87,7 @@ export default function NewsPage() {
         )}
 
         {!loading && !error && articles.length > 0 && (
-          <div className="grid gap-8 md:grid-cols-2">
+          <div className="grid gap-8 md:grid-cols-3">
             {articles.map((article) => (
               <article
                 key={article.id}

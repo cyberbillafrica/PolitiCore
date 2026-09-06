@@ -290,6 +290,34 @@ service cloud.firestore {
     }
 
 
+   // ─────────────────────────────────────────────
+    // MANIFESTO RULES
+    // ─────────────────────────────────────────────
+    
+    match /manifestos/{tenantId} {
+      // Anyone can read published manifestos
+      allow read: if true;
+      
+      // Only admins can write, and only to their own tenant
+      allow write: if request.auth != null 
+        && request.auth.uid != null
+        && isAdmin(request.auth.uid)
+        && request.resource.data.tenant_id == tenantId;
+    }
+    
+    // ─────────────────────────────────────────────
+    // HELPER FUNCTIONS
+    // ─────────────────────────────────────────────
+    
+    function isAdmin(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.access_role == 'admin';
+    }
+    
+    function isUser(userId) {
+      return request.auth.uid == userId;
+    }
+  }
+
     // ============================================================
     // EVENTS
     // ============================================================

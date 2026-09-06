@@ -50,13 +50,19 @@ export default function AdminNewsCMSPage() {
 
   // Editor Modal State
   const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [editingArticle, setEditingArticle] = useState<NewsArticle | null>(null);
+  const [editingArticle, setEditingArticle] = useState<NewsArticle | null>(
+    null,
+  );
 
   // Preview Modal State
-  const [previewArticle, setPreviewArticle] = useState<NewsArticle | null>(null);
+  const [previewArticle, setPreviewArticle] = useState<NewsArticle | null>(
+    null,
+  );
 
   // Delete Confirmation Modal State
-  const [deletingArticle, setDeletingArticle] = useState<NewsArticle | null>(null);
+  const [deletingArticle, setDeletingArticle] = useState<NewsArticle | null>(
+    null,
+  );
 
   // Form State
   const [formTitle, setFormTitle] = useState("");
@@ -115,7 +121,9 @@ export default function AdminNewsCMSPage() {
     setFormCategory(article.category || "Campaign Update");
     setFormAuthor(article.author || profile?.full_name || "Campaign Team");
     setFormStatus(article.status || "draft");
-    setFormScheduledAt(article.scheduled_at ? String(article.scheduled_at) : "");
+    setFormScheduledAt(
+      article.scheduled_at ? String(article.scheduled_at) : "",
+    );
     setFormFeaturedImage(article.featured_image || "");
     setIsEditorOpen(true);
   }
@@ -139,7 +147,10 @@ export default function AdminNewsCMSPage() {
       setSuccess("Image uploaded successfully to Cloudinary.");
     } catch (err: any) {
       console.error("Failed to upload image to Cloudinary:", err);
-      setError(err.message || "Image upload failed. You can also paste an external image URL directly.");
+      setError(
+        err.message ||
+          "Image upload failed. You can also paste an external image URL directly.",
+      );
     } finally {
       setUploadingImage(false);
     }
@@ -162,10 +173,12 @@ export default function AdminNewsCMSPage() {
 
     // Check for duplicate slug
     const isDuplicateSlug = articles.some(
-      (a) => a.slug === slugToUse && a.id !== editingArticle?.id
+      (a) => a.slug === slugToUse && a.id !== editingArticle?.id,
     );
 
-    const finalSlug = isDuplicateSlug ? `${slugToUse}-${Date.now().toString().slice(-4)}` : slugToUse;
+    const finalSlug = isDuplicateSlug
+      ? `${slugToUse}-${Date.now().toString().slice(-4)}`
+      : slugToUse;
 
     try {
       setSaving(true);
@@ -211,7 +224,10 @@ export default function AdminNewsCMSPage() {
     }
   }
 
-  async function handleQuickStatusChange(article: NewsArticle, newStatus: NewsStatus) {
+  async function handleQuickStatusChange(
+    article: NewsArticle,
+    newStatus: NewsStatus,
+  ) {
     try {
       setError(null);
       await updateNewsArticle(article.id, {
@@ -258,7 +274,9 @@ export default function AdminNewsCMSPage() {
       <div className="rounded-2xl bg-white p-8 text-center shadow-sm border my-8">
         <AlertCircle className="mx-auto h-10 w-10 text-red-500 mb-3" />
         <h2 className="text-xl font-bold text-gray-900">Access Denied</h2>
-        <p className="mt-2 text-gray-600">You do not have administrative permissions to view this page.</p>
+        <p className="mt-2 text-gray-600">
+          You do not have administrative permissions to view this page.
+        </p>
       </div>
     );
   }
@@ -269,8 +287,10 @@ export default function AdminNewsCMSPage() {
     const matchesSearch =
       searchQuery === "" ||
       article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (article.excerpt && article.excerpt.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (article.category && article.category.toLowerCase().includes(searchQuery.toLowerCase()));
+      (article.excerpt &&
+        article.excerpt.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (article.category &&
+        article.category.toLowerCase().includes(searchQuery.toLowerCase()));
 
     return matchesTab && matchesSearch;
   });
@@ -288,7 +308,10 @@ export default function AdminNewsCMSPage() {
     let date: Date;
     if (rawTimestamp.seconds) {
       date = new Date(rawTimestamp.seconds * 1000);
-    } else if (typeof rawTimestamp === "string" || typeof rawTimestamp === "number") {
+    } else if (
+      typeof rawTimestamp === "string" ||
+      typeof rawTimestamp === "number"
+    ) {
       date = new Date(rawTimestamp);
     } else {
       return "N/A";
@@ -328,7 +351,11 @@ export default function AdminNewsCMSPage() {
             <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />
             <span>{error}</span>
           </div>
-          <button type="button" onClick={() => setError(null)} className="p-1 hover:bg-red-100 rounded">
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="p-1 hover:bg-red-100 rounded"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -340,7 +367,11 @@ export default function AdminNewsCMSPage() {
             <CheckCircle className="h-5 w-5 shrink-0 text-green-600" />
             <span>{success}</span>
           </div>
-          <button type="button" onClick={() => setSuccess(null)} className="p-1 hover:bg-green-100 rounded">
+          <button
+            type="button"
+            onClick={() => setSuccess(null)}
+            className="p-1 hover:bg-green-100 rounded"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -352,7 +383,9 @@ export default function AdminNewsCMSPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             {/* Tabs */}
             <div className="flex flex-wrap gap-1 rounded-xl bg-gray-100 p-1">
-              {(["all", "draft", "published", "scheduled", "archived"] as const).map((tab) => (
+              {(
+                ["all", "draft", "published", "scheduled", "archived"] as const
+              ).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -366,7 +399,9 @@ export default function AdminNewsCMSPage() {
                   <span>{tab}</span>
                   <span
                     className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-                      activeTab === tab ? "bg-apc-primary/10 text-apc-primary" : "bg-gray-200 text-gray-700"
+                      activeTab === tab
+                        ? "bg-apc-primary/10 text-apc-primary"
+                        : "bg-gray-200 text-gray-700"
                     }`}
                   >
                     {counts[tab]}
@@ -427,10 +462,17 @@ export default function AdminNewsCMSPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredArticles.map((article) => (
-                    <tr key={article.id} className="hover:bg-gray-50/80 transition-colors">
+                    <tr
+                      key={article.id}
+                      className="hover:bg-gray-50/80 transition-colors"
+                    >
                       <td className="px-4 py-3 font-medium text-gray-900 max-w-xs">
-                        <div className="truncate font-semibold text-gray-900">{article.title}</div>
-                        <div className="truncate text-xs text-gray-400 font-mono mt-0.5">/{article.slug}</div>
+                        <div className="truncate font-semibold text-gray-900">
+                          {article.title}
+                        </div>
+                        <div className="truncate text-xs text-gray-400 font-mono mt-0.5">
+                          /{article.slug}
+                        </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
@@ -470,7 +512,9 @@ export default function AdminNewsCMSPage() {
                           {article.status === "draft" && (
                             <button
                               type="button"
-                              onClick={() => handleQuickStatusChange(article, "published")}
+                              onClick={() =>
+                                handleQuickStatusChange(article, "published")
+                              }
                               title="Publish Article"
                               className="rounded p-1.5 text-green-600 hover:bg-green-50 transition-colors"
                             >
@@ -481,7 +525,9 @@ export default function AdminNewsCMSPage() {
                           {article.status === "published" && (
                             <button
                               type="button"
-                              onClick={() => handleQuickStatusChange(article, "draft")}
+                              onClick={() =>
+                                handleQuickStatusChange(article, "draft")
+                              }
                               title="Unpublish (Return to Draft)"
                               className="rounded p-1.5 text-orange-600 hover:bg-orange-50 transition-colors"
                             >
@@ -493,7 +539,9 @@ export default function AdminNewsCMSPage() {
                           {article.status !== "archived" && (
                             <button
                               type="button"
-                              onClick={() => handleQuickStatusChange(article, "archived")}
+                              onClick={() =>
+                                handleQuickStatusChange(article, "archived")
+                              }
                               title="Archive Article"
                               className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors"
                             >
@@ -538,7 +586,10 @@ export default function AdminNewsCMSPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveArticle} className="p-6 overflow-y-auto space-y-5 flex-1">
+            <form
+              onSubmit={handleSaveArticle}
+              className="p-6 overflow-y-auto space-y-5 flex-1"
+            >
               {/* Title & Slug */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -640,7 +691,9 @@ export default function AdminNewsCMSPage() {
                   </label>
                   <select
                     value={formStatus}
-                    onChange={(e) => setFormStatus(e.target.value as NewsStatus)}
+                    onChange={(e) =>
+                      setFormStatus(e.target.value as NewsStatus)
+                    }
                     className="w-full rounded-lg border border-gray-300 px-3.5 py-2 text-sm focus:border-apc-primary focus:outline-none focus:ring-1 focus:ring-apc-primary"
                   >
                     <option value="draft">Draft (Private)</option>
@@ -694,6 +747,41 @@ export default function AdminNewsCMSPage() {
                     </label>
                   </div>
 
+                  {/* ✅ General hint */}
+                  <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 border border-gray-200 space-y-1">
+                    <p className="font-medium text-gray-700">
+                      ℹ️ How to get a working image URL:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      <li>
+                        <strong>Upload</strong> an image using the button above
+                        – this always works.
+                      </li>
+                      <li>
+                        Or paste a <strong>direct image URL</strong> – the link
+                        must end with <code>.jpg</code>, <code>.png</code>,{" "}
+                        <code>.webp</code>, or come from an image CDN.
+                      </li>
+                      <li>
+                        <strong>Page links do not work</strong> – e.g.{" "}
+                        <code>https://drive.google.com/file/d/.../view</code>,
+                        social media posts, or photo gallery pages.
+                      </li>
+                      <li>
+                        <strong>For Google Drive:</strong> use the direct format{" "}
+                        <code>
+                          https://drive.google.com/uc?export=view&amp;id=FILE_ID
+                        </code>{" "}
+                        (replace <code>FILE_ID</code> with your file&apos;s ID).
+                      </li>
+                      <li>
+                        <strong>For most other sites:</strong> right-click the
+                        image and select <em>&quot;Copy Image Address&quot;</em>{" "}
+                        - that gives a direct URL.
+                      </li>
+                    </ul>
+                  </div>
+
                   {formFeaturedImage && (
                     <div className="relative aspect-[16/9] w-48 overflow-hidden rounded-lg border bg-gray-100">
                       <Image
@@ -730,7 +818,9 @@ export default function AdminNewsCMSPage() {
                   className="inline-flex items-center gap-2 rounded-lg bg-apc-primary px-5 py-2 text-sm font-semibold text-white hover:bg-apc-dark disabled:opacity-50"
                 >
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  <span>{editingArticle ? "Save Changes" : "Create Article"}</span>
+                  <span>
+                    {editingArticle ? "Save Changes" : "Create Article"}
+                  </span>
                 </button>
               </div>
             </form>
@@ -744,7 +834,9 @@ export default function AdminNewsCMSPage() {
           <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl my-8 overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between border-b px-6 py-4 bg-gray-50">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase text-gray-500">Article Preview</span>
+                <span className="text-xs font-semibold uppercase text-gray-500">
+                  Article Preview
+                </span>
                 <StatusBadge status={previewArticle.status} />
               </div>
               <button
@@ -764,12 +856,16 @@ export default function AdminNewsCMSPage() {
                 </div>
               )}
 
-              <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{previewArticle.title}</h1>
+              <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+                {previewArticle.title}
+              </h1>
 
               <div className="flex items-center gap-4 text-xs text-gray-500 border-b pb-4">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-3.5 w-3.5 text-apc-primary" />
-                  {formatDate(previewArticle.published_at || previewArticle.created_at)}
+                  {formatDate(
+                    previewArticle.published_at || previewArticle.created_at,
+                  )}
                 </span>
                 {previewArticle.author && (
                   <span className="flex items-center gap-1">
@@ -826,8 +922,10 @@ export default function AdminNewsCMSPage() {
 
             <p className="text-sm text-gray-600">
               Are you sure you want to permanently delete article{" "}
-              <span className="font-semibold text-gray-900">"{deletingArticle.title}"</span>? This action
-              cannot be undone.
+              <span className="font-semibold text-gray-900">
+                &quot;{deletingArticle.title}&quot;
+              </span>
+              ? This action cannot be undone.
             </p>
 
             <div className="mt-6 flex items-center justify-end gap-3">
