@@ -93,7 +93,7 @@ export async function deleteAnnouncement(
   );
 }
 
-// ─── EVENTS ───
+// ─── EVENT ───
 
 export async function getPublishedEvents(
   tenantId: string,

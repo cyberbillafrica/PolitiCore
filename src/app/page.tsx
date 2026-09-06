@@ -20,7 +20,6 @@ import Footer from "@/components/layout/Footer";
 import ElectionCountdown from "@/components/home/ElectionCountdown";
 
 import { getPublishedNews } from "@/lib/firebase/firestore";
-import { getEvents } from "@/lib/firebase/events";
 import { getCurrentTenant } from "@/lib/firebase/tenants";
 
 import type { NewsArticle, EventData } from "@/types";
@@ -35,15 +34,12 @@ export default function HomePage() {
       try {
         setNewsLoading(true);
 
-        const tenant = await getCurrentTenant();
+        await getCurrentTenant();
 
-        const [newsData, eventsData] = await Promise.all([
-          getPublishedNews(3),
-          getEvents(tenant.id),
-        ]);
+        const newsData = await getPublishedNews(3);
 
         setLatestNews(newsData);
-        setEvents(eventsData.filter((event) => event.status === "published"));
+        setEvents([]);
       } catch (err) {
         console.error("Failed to load homepage data:", err);
       } finally {
