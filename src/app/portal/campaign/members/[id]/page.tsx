@@ -55,7 +55,7 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { hasPermission } from "@/lib/permissions";
-import { getWardById, getPollingUnitById } from "@/lib/constants";
+import { getAllLGAs } from "@/lib/constants";
 import {
   getCampaignMemberById,
   updateCampaignMemberProfile,
@@ -73,7 +73,6 @@ import {
   createPermissionGrant,
   deletePermissionGrant,
 } from "@/lib/firebase/permissionGrants";
-import { nkanuWestElectoralData } from "@/data/electoral";
 
 import type {
   OrganizationalAssignment,
@@ -83,6 +82,7 @@ import type {
   Role,
   Permission,
   PermissionGrant,
+  LGA,
 } from "@/types";
 
 /*
@@ -104,6 +104,7 @@ export default function MemberDetailPage() {
   } = useAuth();
 
   const [member, setMember] = useState<ScopedCampaignMember | null>(null);
+  const [lgas, setLgas] = useState<LGA[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -173,7 +174,7 @@ export default function MemberDetailPage() {
 
   /*
    * ----------------------------------------------------------
-   * LOAD MEMBER DATA
+   * LOAD MEMBER DATA & LGAs
    * ----------------------------------------------------------
    */
 
@@ -184,7 +185,10 @@ export default function MemberDetailPage() {
       setLoading(true);
       setError(null);
 
-      const data = await getCampaignMemberById(memberId);
+      const [data, lgasData] = await Promise.all([
+        getCampaignMemberById(memberId),
+        getAllLGAs(),
+      ]);
 
       if (!data) {
         setError("Member not found");
@@ -192,6 +196,7 @@ export default function MemberDetailPage() {
       }
 
       setMember(data);
+      setLgas(lgasData);
       setEditForm({ ...data });
     } catch (err) {
       console.error("Failed to load member:", err);
@@ -246,6 +251,20 @@ export default function MemberDetailPage() {
     loadAssignments();
     loadPermissionGrants();
   }, [loadMember, loadAssignments, loadPermissionGrants]);
+
+  /*
+   * ----------------------------------------------------------
+   * HELPER RESOLVERS
+   * ----------------------------------------------------------
+   */
+
+  const memberLga = lgas.find(
+    (lga) => lga.id === (member?.lga_id ?? "nkanu-west")
+  );
+  const memberWard = memberLga?.wards.find((w) => w.id === member?.ward_id);
+  const memberPollingUnit = memberWard?.pollingUnits.find(
+    (pu) => pu.id === member?.polling_unit_id
+  );
 
   /*
    * ----------------------------------------------------------
@@ -516,13 +535,13 @@ export default function MemberDetailPage() {
           />
           <ElectoralField
             label="LGA"
-            value="Nkanu West"
+            value={memberLga ? memberLga.name : "Not set"}
             icon={<MapPin className="h-4 w-4" />}
           />
           {member.ward_id && (
             <ElectoralField
               label="Ward"
-              value={getWardById(member.ward_id)?.name ?? member.ward_id}
+              value={memberWard ? memberWard.name : member.ward_id}
               icon={<MapPin className="h-4 w-4" />}
             />
           )}
@@ -530,8 +549,9 @@ export default function MemberDetailPage() {
             <ElectoralField
               label="Polling Unit"
               value={
-                getPollingUnitById(member.ward_id, member.polling_unit_id)
-                  ?.name ?? member.polling_unit_id
+                memberPollingUnit
+                  ? memberPollingUnit.name
+                  : member.polling_unit_id
               }
               icon={<MapPin className="h-4 w-4" />}
             />
@@ -564,6 +584,7 @@ export default function MemberDetailPage() {
                   </DialogHeader>
                   <AssignmentManager
                     memberId={member.id}
+                    lgas={lgas}
                     existingAssignments={assignments}
                     onSave={async (data) => {
                       await createOrganizationalAssignment({
@@ -596,6 +617,7 @@ export default function MemberDetailPage() {
                 <AssignmentRow
                   key={assignment.id}
                   assignment={assignment}
+                  lgas={lgas}
                   canEdit={canEdit && canManageAssignments}
                   onEdit={() => {
                     setSelectedAssignment(assignment);
@@ -960,11 +982,13 @@ function RoleManager({
 
 function AssignmentManager({
   memberId,
+  lgas,
   existingAssignments,
   onSave,
   onClose,
 }: {
   memberId: string;
+  lgas: LGA[];
   existingAssignments: OrganizationalAssignment[];
   onSave: (data: {
     position: OrganizationalPosition;
@@ -977,11 +1001,12 @@ function AssignmentManager({
   const [position, setPosition] =
     useState<OrganizationalPosition>("campaign_member");
   const [scopeType, setScopeType] = useState<ScopeType>("ward");
+  const [selectedLgaId, setSelectedLgaId] = useState<string>("");
   const [scopeId, setScopeId] = useState<string>("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
 
-  // Get available wards for Nkanu West
-  const wards = nkanuWestElectoralData;
+  const selectedLga = lgas.find((lga) => lga.id === selectedLgaId);
+  const wards = selectedLga?.wards ?? [];
 
   // Validate position/scope combination
   const isValidCombination = () => {
@@ -1008,9 +1033,8 @@ function AssignmentManager({
 
     let finalScopeId = scopeId;
 
-    // For LGA coordinator in Nkanu West, use a standard identifier
     if (position === "lga_coordinator" && scopeType === "lga") {
-      finalScopeId = "nkanu-west-lga";
+      finalScopeId = selectedLgaId || "nkanu-west";
     }
 
     // For state coordinator
@@ -1070,15 +1094,40 @@ function AssignmentManager({
         </Select>
       </div>
 
+      {(scopeType === "ward" || scopeType === "lga") && (
+        <div className="grid gap-2">
+          <Label>LGA</Label>
+          <Select
+            value={selectedLgaId}
+            onValueChange={(val) => {
+              setSelectedLgaId(val ?? "");
+              setScopeId("");
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select LGA" />
+            </SelectTrigger>
+            <SelectContent>
+              {lgas.map((lga) => (
+                <SelectItem key={lga.id} value={lga.id}>
+                  {lga.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {scopeType === "ward" && (
         <div className="grid gap-2">
           <Label>Ward</Label>
           <Select
             value={scopeId}
             onValueChange={(value) => setScopeId(value ?? "")}
+            disabled={!selectedLgaId}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Select a ward" />
+              <SelectValue placeholder={selectedLgaId ? "Select a ward" : "Select an LGA first"} />
             </SelectTrigger>
             <SelectContent>
               {wards.map((ward) => (
@@ -1133,11 +1182,13 @@ function AssignmentManager({
 
 function AssignmentRow({
   assignment,
+  lgas,
   canEdit,
   onEdit,
   onDelete,
 }: {
   assignment: OrganizationalAssignment;
+  lgas: LGA[];
   canEdit: boolean;
   onEdit: () => void;
   onDelete: () => void;
@@ -1146,11 +1197,15 @@ function AssignmentRow({
 
   const getScopeDisplay = () => {
     if (assignment.scope_type === "ward") {
-      const ward = getWardById(assignment.scope_id);
-      return ward?.name ?? assignment.scope_id;
+      for (const lga of lgas) {
+        const ward = lga.wards.find((w) => w.id === assignment.scope_id);
+        if (ward) return `${lga.name} — ${ward.name}`;
+      }
+      return assignment.scope_id;
     }
     if (assignment.scope_type === "lga") {
-      return "Nkanu West LGA";
+      const lga = lgas.find((l) => l.id === assignment.scope_id);
+      return lga ? `${lga.name} LGA` : assignment.scope_id;
     }
     if (assignment.scope_type === "senatorial_zone") {
       return "Enugu East Senatorial Zone";

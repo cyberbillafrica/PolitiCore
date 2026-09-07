@@ -11,8 +11,8 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 
 import { signUpVolunteer } from "@/lib/firebase/auth";
-
-import { nkanuWestElectoralData } from "@/data/electoral";
+import { getAllLGAs } from "@/lib/constants";
+import type { LGA } from "@/types";
 
 const volunteerSchema = z
   .object({
@@ -43,6 +43,8 @@ const volunteerSchema = z
     // ─────────────────────────────────────────────
     // Electoral location
     // ─────────────────────────────────────────────
+
+    lga_id: z.string().min(1, "LGA is required"),
 
     ward_id: z.string().min(1, "Ward is required"),
 
@@ -194,6 +196,15 @@ function isValidUrl(value?: string) {
 export default function VolunteerPage() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [lgas, setLgas] = useState<LGA[]>([]);
+
+  useEffect(() => {
+    async function loadLgas() {
+      const data = await getAllLGAs();
+      setLgas(data);
+    }
+    loadLgas();
+  }, []);
 
   const {
     register,
@@ -207,6 +218,7 @@ export default function VolunteerPage() {
     defaultValues: {
       membership_types: [],
       gender: undefined,
+      lga_id: "",
       ward_id: "",
       polling_unit_id: "",
 
@@ -225,7 +237,7 @@ export default function VolunteerPage() {
   });
 
   // ─────────────────────────────────────────────
-  // Watch membership + ward
+  // Watch membership + lga + ward
   // ─────────────────────────────────────────────
 
   const selectedMemberships =
@@ -233,6 +245,11 @@ export default function VolunteerPage() {
       control,
       name: "membership_types",
     }) ?? [];
+
+  const selectedLgaId = useWatch({
+    control,
+    name: "lga_id",
+  });
 
   const selectedWardId = useWatch({
     control,
@@ -242,23 +259,30 @@ export default function VolunteerPage() {
   const isSocialMember = selectedMemberships.includes("social_member");
 
   // ─────────────────────────────────────────────
-  // Selected ward
+  // Selected LGA & Ward
   // ─────────────────────────────────────────────
 
-  const selectedWard = nkanuWestElectoralData.find(
-    (ward) => ward.id === selectedWardId,
-  );
+  const selectedLga = lgas.find((lga) => lga.id === selectedLgaId);
+  const wards = selectedLga?.wards ?? [];
 
+  const selectedWard = wards.find((ward) => ward.id === selectedWardId);
   const pollingUnits = selectedWard?.pollingUnits ?? [];
+
+  // ─────────────────────────────────────────────
+  // Reset ward & polling unit when LGA changes
+  // ─────────────────────────────────────────────
+
+  useEffect(() => {
+    resetField("ward_id", { defaultValue: "" });
+    resetField("polling_unit_id", { defaultValue: "" });
+  }, [selectedLgaId, resetField]);
 
   // ─────────────────────────────────────────────
   // Reset polling unit when ward changes
   // ─────────────────────────────────────────────
 
   useEffect(() => {
-    resetField("polling_unit_id", {
-      defaultValue: "",
-    });
+    resetField("polling_unit_id", { defaultValue: "" });
   }, [selectedWardId, resetField]);
 
   // ─────────────────────────────────────────────
@@ -346,8 +370,8 @@ export default function VolunteerPage() {
           </h1>
 
           <p className="mx-auto max-w-2xl text-lg text-gray-600">
-            Join the campaign community and take part in building a better Nkanu
-            West.
+            Join the campaign community and take part in building a better Enugu
+            State.
           </p>
 
           <div className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-600">
@@ -505,16 +529,32 @@ export default function VolunteerPage() {
               </h2>
 
               <p className="mb-5 text-sm text-gray-500">
-                Your registered ward and polling unit determine where you can
+                Your registered LGA, ward, and polling unit determine where you can
                 participate in election operations and reporting.
               </p>
 
-              <div className="grid gap-6 md:grid-cols-2">
-                <FormField label="Ward *" error={errors.ward_id?.message}>
-                  <select {...register("ward_id")} className="form-input">
-                    <option value="">Select your ward</option>
+              <div className="grid gap-6 md:grid-cols-3">
+                <FormField label="LGA *" error={errors.lga_id?.message}>
+                  <select {...register("lga_id")} className="form-input">
+                    <option value="">Select your LGA</option>
+                    {lgas.map((lga) => (
+                      <option key={lga.id} value={lga.id}>
+                        {lga.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
 
-                    {nkanuWestElectoralData.map((ward) => (
+                <FormField label="Ward *" error={errors.ward_id?.message}>
+                  <select
+                    {...register("ward_id")}
+                    className="form-input"
+                    disabled={!selectedLgaId}
+                  >
+                    <option value="">
+                      {selectedLgaId ? "Select your ward" : "Select an LGA first"}
+                    </option>
+                    {wards.map((ward) => (
                       <option key={ward.id} value={ward.id}>
                         {ward.code} — {ward.name}
                       </option>
