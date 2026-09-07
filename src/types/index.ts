@@ -392,13 +392,13 @@ export interface GalleryImage {
   url: string;
   title: string;
   description?: string;
-  uploaded_at: unknown;
+  uploaded_at: string;
 }
 
 export interface GalleryData {
   tenant_id: string;
   images: GalleryImage[];
-  updated_at?: unknown;
+  updated_at?: string;
 }
 
 // ============================================================

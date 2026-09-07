@@ -164,13 +164,6 @@ const navigation: NavItem[] = [
         icon: AlertTriangle,
         permission: "report_issue",
       },
-
-      {
-        name: "Campaign Calendar",
-        href: "/portal/campaign/calendar",
-        icon: CalendarDays,
-        permission: "view_activities",
-      },
     ],
   },
 

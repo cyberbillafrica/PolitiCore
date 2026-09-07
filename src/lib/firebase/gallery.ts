@@ -41,12 +41,12 @@ export async function addGalleryImage(
   image: Omit<GalleryImage, "id" | "uploaded_at">,
 ): Promise<void> {
   const gallery = await getGallery(tenantId);
+  // Use client-side timestamp instead of serverTimestamp()
   const newImage: GalleryImage = {
     ...image,
     id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    uploaded_at: serverTimestamp(),
+    uploaded_at: new Date().toISOString(), // ✅ client timestamp
   };
-
   const images = gallery?.images || [];
   await updateGallery(tenantId, {
     tenant_id: tenantId,
