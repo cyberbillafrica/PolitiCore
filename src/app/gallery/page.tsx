@@ -10,10 +10,13 @@ import Footer from "@/components/layout/Footer";
 import { getGallery } from "@/lib/firebase/gallery";
 import { getCurrentTenant } from "@/lib/firebase/tenants";
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Gallery | Campaign",
-    description: "Photos from campaign events, community visits, and volunteer activities.",
+    description:
+      "Photos from campaign events, community visits, and volunteer activities.",
   };
 }
 
@@ -30,7 +33,8 @@ export default async function GalleryPage() {
         <div className="mb-10">
           <h1 className="text-4xl font-bold text-apc-primary">Gallery</h1>
           <p className="mt-2 text-lg text-gray-600">
-            Photos from campaign events, community visits, and volunteer activities.
+            Photos from campaign events, community visits, and volunteer
+            activities.
           </p>
         </div>
 
@@ -38,7 +42,9 @@ export default async function GalleryPage() {
           <div className="rounded-2xl bg-white p-16 text-center shadow-sm border">
             <Camera className="h-16 w-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500">No images uploaded yet.</p>
-            <p className="text-sm text-gray-400 mt-1">Check back soon for photos.</p>
+            <p className="text-sm text-gray-400 mt-1">
+              Check back soon for photos.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -61,7 +67,9 @@ export default async function GalleryPage() {
                       {image.title}
                     </p>
                     {image.description && (
-                      <p className="text-xs text-white/80 truncate">{image.description}</p>
+                      <p className="text-xs text-white/80 truncate">
+                        {image.description}
+                      </p>
                     )}
                   </div>
                 )}

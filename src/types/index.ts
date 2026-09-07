@@ -398,7 +398,7 @@ export interface GalleryImage {
 export interface GalleryData {
   tenant_id: string;
   images: GalleryImage[];
-  updated_at?: string;
+  updated_at?: unknown;
 }
 
 // ============================================================
@@ -418,7 +418,7 @@ export interface Announcement {
   content: string;
   scope: AnnouncementScope; // Who sees this in the portal
   type: "announcement"; // Discriminator
-  created_at?: unknown;
+  created_at?: string;
   updated_at?: unknown;
 }
 
@@ -432,7 +432,7 @@ export interface EventData {
   ward: string;
   type: "event"; // Discriminator
   status: "draft" | "published";
-  created_at?: unknown;
+  created_at?: string;
   updated_at?: unknown;
 }
 
