@@ -285,6 +285,38 @@ export interface Tenant {
 // USER PROFILE
 // ============================================================
 
+// ============================================================
+// ELECTORAL STRUCTURE TYPES
+// ============================================================
+
+export interface PollingUnit {
+  id: string;
+  code: string;
+  name: string;
+  isNew?: boolean;
+}
+
+export interface Ward {
+  id: string;
+  code: string;
+  name: string;
+  pollingUnits: PollingUnit[];
+}
+
+export interface LGA {
+  id: string;
+  code: string;
+  name: string;
+  wards: Ward[];
+}
+
+export interface EnuguStateElectoralData {
+  id?: string;
+  state: string;
+  lgas: LGA[];
+  updated_at?: unknown;
+}
+
 export interface UserProfile {
   id?: string;
 
@@ -298,6 +330,7 @@ export interface UserProfile {
   gender: string;
 
   // Registered electoral location
+  lga_id?: string;
   ward_id: string;
   polling_unit_id: string;
 

@@ -6,7 +6,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
-  Plus,
   Trash2,
   AlertCircle,
   CheckCircle,
@@ -26,7 +25,6 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getPortalContent,
-  savePortalContent,
   addAnnouncement,
   updateAnnouncement,
   deleteAnnouncement,
@@ -35,8 +33,8 @@ import {
   deleteEvent,
 } from "@/lib/firebase/portal-content";
 import { getCurrentTenant } from "@/lib/firebase/tenants";
-import { nkanuWestElectoralData } from "@/data/electoral";
-import type { Announcement, AnnouncementScope, EventData } from "@/types";
+import { getAllLGAs } from "@/lib/constants";
+import type { Announcement, AnnouncementScope, EventData, LGA } from "@/types";
 
 // ─── DEFAULTS ───
 
@@ -83,6 +81,7 @@ export default function AdminAnnouncementsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState<(Announcement | EventData)[]>([]);
+  const [lgas, setLgas] = useState<LGA[]>([]);
   const [tenantId, setTenantId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -112,8 +111,12 @@ export default function AdminAnnouncementsPage() {
       setError(null);
       const tenant = await getCurrentTenant();
       setTenantId(tenant.id);
-      const data = await getPortalContent(tenant.id);
+      const [data, lgasData] = await Promise.all([
+        getPortalContent(tenant.id),
+        getAllLGAs(),
+      ]);
       setItems(data);
+      setLgas(lgasData);
     } catch (err) {
       console.error("Failed to load content:", err);
       setError("Unable to load content. Please refresh and try again.");
@@ -276,10 +279,12 @@ export default function AdminAnnouncementsPage() {
     return null;
   }
 
-  const wardOptions = nkanuWestElectoralData.map((ward) => ({
-    value: ward.id,
-    label: `${ward.code} — ${ward.name}`,
-  }));
+  const wardOptions = lgas.flatMap((lga) =>
+    lga.wards.map((ward) => ({
+      value: ward.id,
+      label: `${lga.name} — ${ward.code} — ${ward.name}`,
+    }))
+  );
 
   const showAnnouncementForm = isEditing && formType === "announcement";
   const showEventForm = isEditing && formType === "event";

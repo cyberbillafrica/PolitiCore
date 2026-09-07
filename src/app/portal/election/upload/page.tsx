@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { submitElectionResult } from "@/lib/firebase/firestore";
 import { parties } from "@/lib/utils";
-import { nkanuWestElectoralData } from "@/data/electoral";
-import { getWardById, getPollingUnitById } from "@/lib/constants";
+import { getAllLGAs } from "@/lib/constants";
+import type { LGA } from "@/types";
 
 export default function ElectionUploadPage() {
   const { profile } = useAuth();
@@ -13,7 +13,18 @@ export default function ElectionUploadPage() {
     profile?.access_role === "admin" ||
     profile?.access_role === "election_officer";
 
+  const [lgas, setLgas] = useState<LGA[]>([]);
+
+  useEffect(() => {
+    async function loadLgas() {
+      const data = await getAllLGAs();
+      setLgas(data);
+    }
+    loadLgas();
+  }, []);
+
   const [form, setForm] = useState({
+    lga_id: profile?.lga_id ?? "nkanu-west",
     ward_id: isAdminOrElectionOfficer ? "" : (profile?.ward_id ?? ""),
     polling_unit_id: isAdminOrElectionOfficer
       ? ""
@@ -25,16 +36,17 @@ export default function ElectionUploadPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const selectedWard = nkanuWestElectoralData.find(
-    (ward) => ward.id === form.ward_id,
-  );
+  const selectedLga = lgas.find((lga) => lga.id === form.lga_id);
+  const wards = selectedLga?.wards ?? [];
+
+  const selectedWard = wards.find((ward) => ward.id === form.ward_id);
   const pollingUnits = selectedWard?.pollingUnits ?? [];
 
-  // Resolved names for the read-only "Your Reporting Area" box (members only).
-  const memberWard = getWardById(profile?.ward_id ?? "");
-  const memberPollingUnit = getPollingUnitById(
-    profile?.ward_id ?? "",
-    profile?.polling_unit_id ?? "",
+  // Resolved names for member reporting area
+  const memberLga = lgas.find((lga) => lga.id === (profile?.lga_id ?? "nkanu-west"));
+  const memberWard = memberLga?.wards.find((w) => w.id === profile?.ward_id);
+  const memberPollingUnit = memberWard?.pollingUnits.find(
+    (pu) => pu.id === profile?.polling_unit_id,
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -94,6 +106,10 @@ export default function ElectionUploadPage() {
         <div className="mb-6 p-4 bg-apc-light text-apc-primary rounded-lg border border-apc-primary/20">
           <p className="font-medium">Your Reporting Area</p>
           <p className="mt-1">
+            <span className="font-semibold">LGA:</span>{" "}
+            {memberLga ? memberLga.name : "Not set"}
+          </p>
+          <p>
             <span className="font-semibold">Ward:</span>{" "}
             {memberWard ? `${memberWard.code} — ${memberWard.name}` : "Not set"}
           </p>
@@ -113,9 +129,34 @@ export default function ElectionUploadPage() {
         onSubmit={handleSubmit}
         className="bg-white rounded-xl shadow-sm p-8 space-y-6"
       >
-        {/* Ward and Polling Unit – admin/election officer only */}
+        {/* LGA, Ward and Polling Unit – admin/election officer selection */}
         {isAdminOrElectionOfficer && (
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                LGA *
+              </label>
+              <select
+                value={form.lga_id}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    lga_id: e.target.value,
+                    ward_id: "",
+                    polling_unit_id: "",
+                  })
+                }
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent"
+                required
+              >
+                <option value="">Select LGA</option>
+                {lgas.map((lga) => (
+                  <option key={lga.id} value={lga.id}>
+                    {lga.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Ward *
@@ -129,11 +170,14 @@ export default function ElectionUploadPage() {
                     polling_unit_id: "",
                   })
                 }
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent"
+                disabled={!form.lga_id}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                 required
               >
-                <option value="">Select ward</option>
-                {nkanuWestElectoralData.map((ward) => (
+                <option value="">
+                  {form.lga_id ? "Select ward" : "Select an LGA first"}
+                </option>
+                {wards.map((ward) => (
                   <option key={ward.id} value={ward.id}>
                     {ward.code} — {ward.name}
                   </option>
