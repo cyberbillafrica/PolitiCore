@@ -55,9 +55,11 @@ export default function Header() {
                   <span className="text-lg font-extrabold tracking-tight text-[#008751] sm:text-xl">
                     Uche
                   </span>
-
+                  <span className="text-lg font-extrabold text-[#d71920] sm:text-xl">
+                    Ndi
+                  </span>
                   <span className="text-lg font-extrabold text-gray-800 sm:text-xl">
-                    Nnaji
+                    Enugu
                   </span>
                 </div>
 
