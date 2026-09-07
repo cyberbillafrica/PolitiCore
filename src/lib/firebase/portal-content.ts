@@ -62,8 +62,8 @@ export async function addAnnouncement(
     ...announcement,
     id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     type: "announcement",
-    created_at: serverTimestamp(),
-    updated_at: serverTimestamp(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
   await savePortalContent(tenantId, [newItem, ...items]);
 }
@@ -76,7 +76,7 @@ export async function updateAnnouncement(
   const items = await getPortalContent(tenantId);
   const updated = items.map((item) =>
     item.id === announcementId && item.type === "announcement"
-      ? { ...item, ...updates, updated_at: serverTimestamp() }
+      ? { ...item, ...updates, updated_at: new Date().toISOString() }
       : item,
   );
   await savePortalContent(tenantId, updated);
@@ -116,8 +116,8 @@ export async function addEvent(
     ...event,
     id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     type: "event",
-    created_at: serverTimestamp(),
-    updated_at: serverTimestamp(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
   await savePortalContent(tenantId, [newItem, ...items]);
 }
@@ -130,7 +130,7 @@ export async function updateEvent(
   const items = await getPortalContent(tenantId);
   const updated = items.map((item) =>
     item.id === eventId && item.type === "event"
-      ? { ...item, ...updates, updated_at: serverTimestamp() }
+      ? { ...item, ...updates, updated_at: new Date().toISOString() }
       : item,
   );
   await savePortalContent(tenantId, updated);
