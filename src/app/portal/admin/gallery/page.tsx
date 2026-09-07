@@ -15,6 +15,15 @@ import {
   Plus,
   Image as ImageIcon,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -38,6 +47,10 @@ export default function AdminGalleryPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [tenantId, setTenantId] = useState<string>("");
+  const [pendingUploadUrl, setPendingUploadUrl] = useState<string | null>(null);
+  const [imageTitle, setImageTitle] = useState("");
+  const [imageDescription, setImageDescription] = useState("");
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   // ─── AUTH GUARD ───
 
@@ -84,24 +97,40 @@ export default function AdminGalleryPage() {
     try {
       const url = await uploadToCloudinary(file, "ifeanyi-2027/gallery");
 
-      // Prompt for title
-      const title = prompt("Enter a title for this image (optional):") || "";
-      const description = prompt("Enter a description (optional):") || "";
-
-      await addGalleryImage(tenantId, {
-        url,
-        title: title || "Gallery image",
-        description: description || undefined,
-      });
-
-      await loadGallery();
-      setSuccess("Image uploaded successfully!");
+      setPendingUploadUrl(url);
+      setImageTitle("");
+      setImageDescription("");
+      setDetailsOpen(true);
     } catch (err) {
       console.error("Failed to upload image:", err);
       setError(err instanceof Error ? err.message : "Failed to upload image.");
     } finally {
       setUploading(false);
       e.target.value = "";
+    }
+  };
+
+  const handleSaveImageDetails = async () => {
+    if (!pendingUploadUrl) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      await addGalleryImage(tenantId, {
+        url: pendingUploadUrl,
+        title: imageTitle.trim() || "Gallery image",
+        description: imageDescription.trim() || undefined,
+      });
+      setDetailsOpen(false);
+      setPendingUploadUrl(null);
+      await loadGallery();
+      setSuccess("Image uploaded successfully!");
+    } catch (err) {
+      console.error("Failed to save image details:", err);
+      setError("Failed to save image details. Please try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -190,6 +219,68 @@ export default function AdminGalleryPage() {
           </button>
         </div>
       )}
+
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add image details</DialogTitle>
+            <DialogDescription>
+              Add an optional title and description before publishing this
+              image.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="gallery-title"
+                className="mb-1.5 block text-sm font-medium text-gray-700"
+              >
+                Title
+              </label>
+              <Input
+                id="gallery-title"
+                value={imageTitle}
+                onChange={(event) => setImageTitle(event.target.value)}
+                placeholder="Gallery image"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="gallery-description"
+                className="mb-1.5 block text-sm font-medium text-gray-700"
+              >
+                Description
+              </label>
+              <textarea
+                id="gallery-description"
+                value={imageDescription}
+                onChange={(event) => setImageDescription(event.target.value)}
+                placeholder="Optional description"
+                rows={3}
+                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setDetailsOpen(false)}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveImageDetails}
+              className="rounded-lg bg-apc-primary px-4 py-2 text-sm font-semibold text-white hover:bg-apc-dark disabled:opacity-50"
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save image"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── GALLERY GRID ─── */}
       {images.length === 0 ? (

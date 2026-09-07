@@ -21,6 +21,7 @@ import ElectionCountdown from "@/components/home/ElectionCountdown";
 
 import { getPublishedNews } from "@/lib/firebase/firestore";
 import { getCurrentTenant } from "@/lib/firebase/tenants";
+import { getPublishedEvents } from "@/lib/firebase/portal-content";
 
 import type { NewsArticle, EventData } from "@/types";
 
@@ -34,12 +35,13 @@ export default function HomePage() {
       try {
         setNewsLoading(true);
 
-        await getCurrentTenant();
+        const tenant = await getCurrentTenant();
 
         const newsData = await getPublishedNews(3);
+        const eventsData = await getPublishedEvents(tenant.id);
 
         setLatestNews(newsData);
-        setEvents([]);
+        setEvents(eventsData);
       } catch (err) {
         console.error("Failed to load homepage data:", err);
       } finally {
