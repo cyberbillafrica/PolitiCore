@@ -20,16 +20,18 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-[0_2px_20px_rgba(0,0,0,0.06)]">
-      {/* APC-inspired accent bar */}
+      {/* Campaign accent */}
       <div className="flex h-1 w-full">
         <div className="w-1/3 bg-[#008751]" />
-        <div className="w-1/3 bg-gray-100" />
-        <div className="w-1/3 bg-[#d71920]" />
+        <div className="w-1/3 bg-white" />
+        <div className="w-1/3 bg-[#008751]" />
       </div>
 
       <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-[76px] items-center justify-between">
-          {/* Brand */}
+          {/* =====================================================
+              BRAND
+          ===================================================== */}
           <div className="shrink-0">
             <Link
               href="/"
@@ -40,7 +42,7 @@ export default function Header() {
               <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-all duration-300 group-hover:shadow-md">
                 <Image
                   src="/images/official_logo.jpg"
-                  alt="Ifeanyi 4 Nkanu"
+                  alt="Uche Geoffrey Nnaji"
                   fill
                   sizes="44px"
                   className="object-contain p-1"
@@ -51,24 +53,24 @@ export default function Header() {
               <div className="leading-none">
                 <div className="flex items-center gap-1">
                   <span className="text-lg font-extrabold tracking-tight text-[#008751] sm:text-xl">
-                    Ifeanyi
+                    Uche
                   </span>
-                  <span className="text-lg font-extrabold text-[#d71920] sm:text-xl">
-                    4
-                  </span>
-                  <span className="text-lg font-extrabold tracking-tight text-[#008751] sm:text-xl">
-                    Nkanu
+
+                  <span className="text-lg font-extrabold text-gray-800 sm:text-xl">
+                    Nnaji
                   </span>
                 </div>
 
-                <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400 sm:text-[11px]">
-                  House of Assembly • 2027
+                <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400 sm:text-[11px]">
+                  Governorship • Enugu • 2027
                 </span>
               </div>
             </Link>
           </div>
 
-          {/* Desktop Navigation */}
+          {/* =====================================================
+              DESKTOP NAVIGATION
+          ===================================================== */}
           <div className="hidden items-center gap-7 md:flex">
             <Link
               href="/"
@@ -88,7 +90,7 @@ export default function Header() {
               href="/manifesto"
               className="text-sm font-medium text-gray-600 transition-colors hover:text-[#008751]"
             >
-              Manifesto
+              Our Agenda
             </Link>
 
             <Link
@@ -113,7 +115,9 @@ export default function Header() {
             </Link>
           </div>
 
-          {/* Desktop Actions */}
+          {/* =====================================================
+              DESKTOP ACTIONS
+          ===================================================== */}
           <div className="hidden items-center gap-4 md:flex">
             {user ? (
               <>
@@ -124,7 +128,7 @@ export default function Header() {
                 >
                   <Bell className="h-5 w-5" />
 
-                  <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#d71920] text-[9px] font-bold text-white">
+                  <span className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#008751] text-[9px] font-bold text-white">
                     3
                   </span>
                 </button>
@@ -142,7 +146,7 @@ export default function Header() {
                 <button
                   onClick={handleLogout}
                   aria-label="Logout"
-                  className="rounded-full p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-[#d71920]"
+                  className="rounded-full p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                 >
                   <LogOut className="h-5 w-5" />
                 </button>
@@ -160,14 +164,16 @@ export default function Header() {
                   href="/volunteer"
                   className="group flex items-center gap-2 rounded-full bg-[#008751] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#007744] hover:shadow-md"
                 >
-                  Volunteer
+                  Get Involved
                   <ArrowUpRight className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                 </Link>
               </>
             )}
           </div>
 
-          {/* Mobile Menu Button */}
+          {/* =====================================================
+              MOBILE MENU BUTTON
+          ===================================================== */}
           <div className="flex items-center md:hidden">
             <button
               onClick={() => setIsOpen(!isOpen)}
@@ -184,14 +190,16 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Mobile Navigation */}
+        {/* =====================================================
+            MOBILE NAVIGATION
+        ===================================================== */}
         {isOpen && (
           <div className="border-t border-gray-100 pb-5 pt-3 md:hidden">
             <div className="flex flex-col gap-1">
               {[
                 ["Home", "/"],
                 ["Biography", "/biography"],
-                ["Manifesto", "/manifesto"],
+                ["Our Agenda", "/manifesto"],
                 ["News", "/news"],
                 ["Gallery", "/gallery"],
                 ["Contact", "/contact"],
@@ -203,6 +211,7 @@ export default function Header() {
                   className="group flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-green-50 hover:text-[#008751]"
                 >
                   <span>{label}</span>
+
                   <ArrowUpRight className="h-4 w-4 text-gray-300 transition-colors group-hover:text-[#008751]" />
                 </Link>
               ))}
@@ -222,7 +231,7 @@ export default function Header() {
 
                     <button
                       onClick={handleLogout}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-[#d71920] transition-colors hover:bg-red-50"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
                     >
                       <LogOut className="h-4 w-4" />
                       Logout
@@ -243,7 +252,7 @@ export default function Header() {
                       onClick={closeMenu}
                       className="flex items-center justify-center gap-2 rounded-xl bg-[#008751] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#007744]"
                     >
-                      Become a Volunteer
+                      Get Involved
                       <ArrowUpRight className="h-4 w-4" />
                     </Link>
                   </div>
