@@ -731,6 +731,28 @@ service cloud.firestore {
 
 
     // ============================================================
+    // CONTACT MESSAGES
+    // ============================================================
+
+    match /contact_messages/{messageId} {
+
+      /*
+       * Anyone can submit a contact message.
+       * Creation must contain valid name, email, and message string fields.
+       */
+      allow create: if request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.message is string
+        && request.resource.data.status == "unread";
+
+      /*
+       * Only admins can view, update, or delete contact messages.
+       */
+      allow read, update, delete: if isAdmin();
+    }
+
+
+    // ============================================================
     // TENANTS
     // ============================================================
 
