@@ -583,3 +583,29 @@ export async function submitElectionResult(
     created_at: serverTimestamp(),
   });
 }
+
+// ─────────────────────────────────────────────
+// Contact messages
+// ─────────────────────────────────────────────
+
+export interface ContactMessage {
+  name: string;
+  email: string;
+  phone?: string;
+  message: string;
+}
+
+export async function submitContactMessage(data: ContactMessage): Promise<string> {
+  const tenant = await getCurrentTenant();
+  const docRef = await addDoc(collection(db, "contact_messages"), {
+    name: data.name.trim(),
+    email: data.email.trim(),
+    phone: data.phone?.trim() || null,
+    message: data.message.trim(),
+    tenant_id: tenant.id,
+    status: "unread",
+    created_at: serverTimestamp(),
+  });
+
+  return docRef.id;
+}
