@@ -595,6 +595,13 @@ export interface ContactMessage {
   message: string;
 }
 
+export interface ContactMessageDoc extends ContactMessage {
+  id: string;
+  tenant_id: string;
+  status: "unread" | "read";
+  created_at: unknown;
+}
+
 export async function submitContactMessage(data: ContactMessage): Promise<string> {
   const tenant = await getCurrentTenant();
   const docRef = await addDoc(collection(db, "contact_messages"), {
@@ -608,4 +615,41 @@ export async function submitContactMessage(data: ContactMessage): Promise<string
   });
 
   return docRef.id;
+}
+
+export async function getContactMessages(): Promise<ContactMessageDoc[]> {
+  const tenant = await getCurrentTenant();
+  const q = query(
+    collection(db, "contact_messages"),
+    where("tenant_id", "==", tenant.id),
+    orderBy("created_at", "desc")
+  );
+
+  try {
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    })) as ContactMessageDoc[];
+  } catch (err) {
+    console.error("Error fetching contact messages:", err);
+    // Fallback simple query without orderBy if index is building
+    const qSimple = query(
+      collection(db, "contact_messages"),
+      where("tenant_id", "==", tenant.id)
+    );
+    const snapSimple = await getDocs(qSimple);
+    return snapSimple.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    })) as ContactMessageDoc[];
+  }
+}
+
+export async function markContactMessageAsRead(id: string): Promise<void> {
+  const docRef = doc(db, "contact_messages", id);
+  await updateDoc(docRef, {
+    status: "read",
+    read_at: serverTimestamp(),
+  });
 }
