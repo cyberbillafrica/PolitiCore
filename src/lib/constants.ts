@@ -1,8 +1,20 @@
-import type { MembershipType } from "@/types";
-
+import type { MembershipType, LGA, Ward, PollingUnit } from "@/types";
 import { nkanuWestElectoralData } from "@/data/electoral";
+import {
+  getLGAs as getLGAsFromFirestore,
+  getLGAById as getLGAByIdFromFirestore,
+  getWardById as getWardByIdFromFirestore,
+  getPollingUnitById as getPollingUnitByIdFromFirestore,
+} from "./firebase/electoral";
 
 export const electoralWards = nkanuWestElectoralData;
+
+export const fallbackLGA: LGA = {
+  id: "nkanu-west",
+  code: "NW",
+  name: "Nkanu West",
+  wards: nkanuWestElectoralData,
+};
 
 export const membershipOptions: {
   value: MembershipType;
@@ -49,6 +61,7 @@ export const parties = [
   },
 ] as const;
 
+// Sync functions preserved for backward compatibility
 export function getWardById(wardId?: string) {
   if (!wardId) return undefined;
 
@@ -81,4 +94,68 @@ export function getElectoralLocation(wardId?: string, pollingUnitId?: string) {
     ward,
     pollingUnit: pollingUnit ?? null,
   };
+}
+
+// Async functions with Firestore primary access + graceful fallbacks
+export async function getAllLGAs(): Promise<LGA[]> {
+  try {
+    const lgas = await getLGAsFromFirestore();
+    if (lgas && lgas.length > 0) {
+      return lgas;
+    }
+  } catch (err) {
+    console.error("Failed to load LGAs from Firestore, using fallback:", err);
+  }
+  return [fallbackLGA];
+}
+
+export async function getLGA(id: string): Promise<LGA | null> {
+  try {
+    const lga = await getLGAByIdFromFirestore(id);
+    if (lga) return lga;
+  } catch (err) {
+    console.error(`Failed to load LGA ${id} from Firestore, checking fallback:`, err);
+  }
+
+  if (id === "nkanu-west" || !id) {
+    return fallbackLGA;
+  }
+  return null;
+}
+
+export async function getWardByIdAsync(
+  lgaId: string,
+  wardId: string,
+): Promise<Ward | null> {
+  try {
+    const ward = await getWardByIdFromFirestore(lgaId, wardId);
+    if (ward) return ward;
+  } catch (err) {
+    console.error(`Failed to load ward ${wardId} from Firestore:`, err);
+  }
+
+  // Fallback check
+  if (!lgaId || lgaId === "nkanu-west") {
+    return getWardById(wardId) ?? null;
+  }
+  return null;
+}
+
+export async function getPollingUnitByIdAsync(
+  lgaId: string,
+  wardId: string,
+  puId: string,
+): Promise<PollingUnit | null> {
+  try {
+    const pu = await getPollingUnitByIdFromFirestore(lgaId, wardId, puId);
+    if (pu) return pu;
+  } catch (err) {
+    console.error(`Failed to load PU ${puId} from Firestore:`, err);
+  }
+
+  // Fallback check
+  if (!lgaId || lgaId === "nkanu-west") {
+    return getPollingUnitById(wardId, puId) ?? null;
+  }
+  return null;
 }

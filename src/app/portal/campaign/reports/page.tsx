@@ -25,9 +25,11 @@ import {
   createCampaignFieldReport,
   getMyCampaignReports,
   getScopedCampaignReports,
+  getAllCampaignReportsForTenant,
   type CampaignFieldReport,
   type CampaignReportType,
 } from "@/lib/firebase/campaignReports";
+import { isAdminUser } from "@/lib/permissions";
 
 import {
   formatScopeType,
@@ -138,30 +140,27 @@ export default function CampaignReportsPage() {
       setLoading(true);
       setError(null);
 
-      /*
-       * Every reporting user can see reports they personally
-       * submitted.
-       */
-
       const mine = await getMyCampaignReports(user.uid);
-
       setMyReports(mine);
 
-      /*
-       * Coordinators with a recognized organizational scope
-       * can additionally load reports for that scope.
-       */
+      const isAdmin = isAdminUser(profile);
 
-      if (canReview && primaryAssignment && profile.tenant_id) {
+      if (isAdmin && profile.tenant_id) {
         setScopeLoading(true);
-
+        try {
+          const allReports = await getAllCampaignReportsForTenant(profile.tenant_id);
+          setScopedReports(allReports);
+        } finally {
+          setScopeLoading(false);
+        }
+      } else if (canReview && primaryAssignment && profile.tenant_id) {
+        setScopeLoading(true);
         try {
           const scoped = await getScopedCampaignReports(
             profile.tenant_id,
             primaryAssignment.scope_type,
             primaryAssignment.scope_id,
           );
-
           setScopedReports(scoped);
         } finally {
           setScopeLoading(false);
@@ -171,7 +170,6 @@ export default function CampaignReportsPage() {
       }
     } catch (err) {
       console.error("Failed to load campaign reports:", err);
-
       setError("Unable to load campaign field reports.");
     } finally {
       setLoading(false);

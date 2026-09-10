@@ -34,6 +34,7 @@ export async function signUpVolunteer(
 
     membership_types: MembershipType[];
 
+    lga_id?: string;
     ward_id: string;
     polling_unit_id: string;
 
@@ -121,6 +122,7 @@ export async function createMemberByAdmin(
     membership_types: MembershipType[];
     access_role: Role;
 
+    lga_id?: string;
     ward_id: string;
     polling_unit_id: string;
 

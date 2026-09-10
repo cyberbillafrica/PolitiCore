@@ -11,6 +11,7 @@ import {
   CheckSquare,
   FileText,
   Flag,
+  Mail,
   Megaphone,
   Network,
   Settings,
@@ -173,6 +174,13 @@ export default function AdminDashboard() {
             title="Announcements"
             description="Manage campaign-wide announcements and communications."
             href="/portal/admin/announcements"
+          />
+
+          <AdminCard
+            icon={<Mail className="h-5 w-5" />}
+            title="Contact Messages"
+            description="Review and respond to inquiries sent from the website contact page."
+            href="/portal/admin/contact-messages"
           />
 
           <AdminCard

@@ -10,14 +10,16 @@ import {
 } from "firebase/firestore";
 
 import { db } from "./config";
-
 import { CURRENT_TENANT_ID } from "./tenants";
+import { getAllLGAs } from "@/lib/constants";
+import { getCoveredWardIds } from "@/lib/organization";
 
 import type {
   OrganizationalAssignment,
   UserProfile,
   MembershipType,
   Role,
+  LGA,
 } from "@/types";
 
 /*
@@ -53,7 +55,6 @@ export async function getAllCampaignMembersForTenant(
 ): Promise<ScopedCampaignMember[]> {
   const membersQuery = query(
     collection(db, "users"),
-    where("tenant_id", "==", tenantId),
     where("membership_types", "array-contains", "campaign_member"),
   );
 
@@ -73,42 +74,40 @@ export async function getAllCampaignMembersForTenant(
 
 /*
  * ============================================================
- * GET SCOPED CAMPAIGN MEMBERS
+ * GET SCOPED CAMPAIGN MEMBERS WITH HIERARCHICAL RESOLUTION
  * ============================================================
  */
 
 export async function getScopedCampaignMembers(
-  assignment: OrganizationalAssignment,
+  assignment: OrganizationalAssignment | null,
+  lgasData?: LGA[],
 ): Promise<ScopedCampaignMembersResult> {
-  /*
-   * ----------------------------------------------------------
-   * CAMPAIGN-WIDE
-   * ----------------------------------------------------------
-   */
-
-  if (assignment.scope_type === "campaign") {
-    const membersQuery = query(
-      collection(db, "users"),
-      where("membership_types", "array-contains", "campaign_member"),
-    );
-
-    const snapshot = await getDocs(membersQuery);
-
+  // If no assignment provided (e.g. for non-admin), return empty
+  if (!assignment) {
     return {
-      members: snapshot.docs.map((document) => ({
-        id: document.id,
-        ...document.data(),
-      })) as ScopedCampaignMember[],
+      members: [],
       scopeSupported: true,
     };
   }
 
   /*
-   * ----------------------------------------------------------
-   * POLLING UNIT
-   * ----------------------------------------------------------
+   * CAMPAIGN & STATE & ZONE
    */
+  if (
+    assignment.scope_type === "campaign" ||
+    assignment.scope_type === "state" ||
+    assignment.scope_type === "senatorial_zone"
+  ) {
+    const all = await getAllCampaignMembersForTenant();
+    return {
+      members: all,
+      scopeSupported: true,
+    };
+  }
 
+  /*
+   * POLLING UNIT
+   */
   if (assignment.scope_type === "polling_unit") {
     const membersQuery = query(
       collection(db, "users"),
@@ -128,11 +127,8 @@ export async function getScopedCampaignMembers(
   }
 
   /*
-   * ----------------------------------------------------------
    * WARD
-   * ----------------------------------------------------------
    */
-
   if (assignment.scope_type === "ward") {
     const membersQuery = query(
       collection(db, "users"),
@@ -152,16 +148,29 @@ export async function getScopedCampaignMembers(
   }
 
   /*
-   * ----------------------------------------------------------
-   * HIGHER ORGANIZATIONAL LEVELS
-   * ----------------------------------------------------------
+   * LGA
    */
+  if (assignment.scope_type === "lga") {
+    const lgas = lgasData || (await getAllLGAs());
+    const coveredWardIds = getCoveredWardIds([assignment], lgas);
+
+    const allMembers = await getAllCampaignMembersForTenant();
+
+    const filtered = allMembers.filter((m) =>
+      m.lga_id === assignment.scope_id ||
+      (m.ward_id && coveredWardIds.includes(m.ward_id))
+    );
+
+    return {
+      members: filtered,
+      scopeSupported: true,
+    };
+  }
 
   return {
     members: [],
     scopeSupported: false,
-    message:
-      "This organizational scope requires the electoral hierarchy resolver before members can be loaded safely.",
+    message: "Scope type not supported.",
   };
 }
 

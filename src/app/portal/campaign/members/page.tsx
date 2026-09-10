@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-
 import {
   ArrowLeft,
   ArrowRight,
@@ -15,53 +14,27 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
-
 import { useMemo, useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
 import { useAuth } from "@/contexts/AuthContext";
-
 import { getWardById, getPollingUnitById } from "@/lib/constants";
-
 import { useOrganizationalAssignments } from "@/hooks/useOrganizationalAssignments";
-
 import { useScopedCampaignMembers } from "@/hooks/useScopedCampaignMembers";
-
+import { isAdminUser } from "@/lib/permissions";
 import {
   formatScopeType,
   getPrimaryOrganizationalScope,
+  formatOrganizationalPosition,
 } from "@/lib/organization";
-
-import type { OrganizationalPosition } from "@/types";
-
-/*
- * ============================================================
- * PAGE
- * ============================================================
- */
 
 export default function CampaignMembersPage() {
   const { profile } = useAuth();
+  const { assignments, loading: assignmentsLoading } = useOrganizationalAssignments();
 
-  const { assignments, loading: assignmentsLoading } =
-    useOrganizationalAssignments();
-
-  /*
-   * ----------------------------------------------------------
-   * PRIMARY ASSIGNMENT
-   * ----------------------------------------------------------
-   */
-
+  const isAdmin = isAdminUser(profile);
   const primaryScope = getPrimaryOrganizationalScope(assignments);
-
   const assignment = primaryScope.assignment;
-
-  /*
-   * ----------------------------------------------------------
-   * MEMBERS
-   * ----------------------------------------------------------
-   */
 
   const {
     members,
@@ -69,28 +42,13 @@ export default function CampaignMembersPage() {
     error,
     scopeSupported,
     refresh,
-  } = useScopedCampaignMembers(assignment);
-
-  /*
-   * ----------------------------------------------------------
-   * SEARCH
-   * ----------------------------------------------------------
-   */
+  } = useScopedCampaignMembers(assignment, profile);
 
   const [search, setSearch] = useState("");
 
-  /*
-   * ----------------------------------------------------------
-   * FILTERED MEMBERS
-   * ----------------------------------------------------------
-   */
-
   const filteredMembers = useMemo(() => {
     const term = search.trim().toLowerCase();
-
-    if (!term) {
-      return members;
-    }
+    if (!term) return members;
 
     return members.filter((member) => {
       return (
@@ -101,27 +59,12 @@ export default function CampaignMembersPage() {
     });
   }, [members, search]);
 
-  /*
-   * ----------------------------------------------------------
-   * AUTH
-   * ----------------------------------------------------------
-   */
+  if (!profile) return null;
 
-  if (!profile) {
-    return null;
-  }
-
-  /*
-   * ----------------------------------------------------------
-   * LOADING
-   * ----------------------------------------------------------
-   */
-
-  if (assignmentsLoading) {
+  if (assignmentsLoading && !isAdmin) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center gap-3">
         <Loader2 className="h-5 w-5 animate-spin text-apc-primary" />
-
         <p className="text-sm text-gray-500">
           Loading your organizational scope...
         </p>
@@ -130,31 +73,24 @@ export default function CampaignMembersPage() {
   }
 
   /*
-   * ----------------------------------------------------------
-   * NO ASSIGNMENT
-   * ----------------------------------------------------------
+   * NO ASSIGNMENT FOR NON-ADMIN
    */
-
-  if (!assignment) {
+  if (!assignment && !isAdmin) {
     return (
       <div className="space-y-6 pb-8">
         <BackLink />
-
         <PageHeader />
 
         <Card className="border-yellow-200 bg-yellow-50">
           <CardContent className="p-6">
             <div className="flex gap-4">
               <AlertTriangle className="h-6 w-6 shrink-0 text-yellow-600" />
-
               <div>
                 <h2 className="font-semibold text-yellow-900">
                   No organizational assignment
                 </h2>
-
                 <p className="mt-1 text-sm text-yellow-800">
-                  You must have an active campaign organizational assignment
-                  before you can view a scoped member directory.
+                  An administrator must assign you to a campaign organizational position before scoped campaign data can be displayed.
                 </p>
               </div>
             </div>
@@ -164,22 +100,12 @@ export default function CampaignMembersPage() {
     );
   }
 
-  /*
-   * ----------------------------------------------------------
-   * PAGE
-   * ----------------------------------------------------------
-   */
-
   return (
     <div className="space-y-6 pb-8">
       <BackLink />
-
       <PageHeader />
 
-      {/* ======================================================
-          SCOPE SUMMARY
-          ====================================================== */}
-
+      {/* SCOPE SUMMARY */}
       <Card className="border-apc-primary/10">
         <CardContent className="p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -190,17 +116,19 @@ export default function CampaignMembersPage() {
 
               <div>
                 <p className="text-sm text-gray-500">
-                  Your authorized organizational scope
+                  {isAdmin ? "Global Campaign Scope" : "Your authorized organizational scope"}
                 </p>
 
                 <h2 className="mt-1 text-xl font-bold text-gray-900">
-                  {formatPosition(assignment.position)}
+                  {isAdmin
+                    ? "Administrator Directory"
+                    : formatOrganizationalPosition(assignment?.position || null)}
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-600">
-                  {formatScopeType(assignment.scope_type)}
-                  {" · "}
-                  {assignment.scope_id}
+                  {isAdmin
+                    ? "State-Wide — All LGAs, Wards & Polling Units"
+                    : `${formatScopeType(assignment?.scope_type || null)} · ${assignment?.scope_id}`}
                 </p>
               </div>
             </div>
@@ -218,36 +146,7 @@ export default function CampaignMembersPage() {
         </CardContent>
       </Card>
 
-      {/* ======================================================
-          UNSUPPORTED HIGHER SCOPE
-          ====================================================== */}
-
-      {!scopeSupported && (
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardContent className="p-5">
-            <div className="flex gap-3">
-              <AlertTriangle className="h-5 w-5 shrink-0 text-yellow-600" />
-
-              <div>
-                <p className="font-semibold text-yellow-900">
-                  Geographic scope expansion required
-                </p>
-
-                <p className="mt-1 text-sm leading-6 text-yellow-800">
-                  Your assignment is above ward level. The member directory
-                  needs the electoral hierarchy resolver to translate that scope
-                  into its wards and polling units.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ======================================================
-          DIRECTORY
-          ====================================================== */}
-
+      {/* DIRECTORY */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -257,7 +156,9 @@ export default function CampaignMembersPage() {
               </CardTitle>
 
               <p className="mt-1 text-sm text-gray-500">
-                Members within your authorized campaign area.
+                {isAdmin
+                  ? "Displaying all registered campaign members state-wide."
+                  : "Members within your authorized campaign area."}
               </p>
             </div>
 
@@ -276,11 +177,8 @@ export default function CampaignMembersPage() {
         </CardHeader>
 
         <CardContent>
-          {/* SEARCH */}
-
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-
             <input
               type="search"
               value={search}
@@ -290,40 +188,20 @@ export default function CampaignMembersPage() {
             />
           </div>
 
-          {/* ERROR */}
-
-          {error && scopeSupported && (
+          {error && (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
               <p className="text-sm font-medium text-red-800">{error}</p>
             </div>
           )}
 
-          {/* LOADING */}
-
           {membersLoading ? (
             <DirectoryLoading />
-          ) : !scopeSupported ? (
-            <div className="py-12 text-center">
-              <Users className="mx-auto h-12 w-12 text-gray-300" />
-
-              <p className="mt-4 font-semibold text-gray-900">
-                Member directory not available for this scope yet
-              </p>
-
-              <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
-                Your organizational assignment is valid, but the electoral
-                hierarchy needed to resolve this geographic scope has not yet
-                been connected.
-              </p>
-            </div>
           ) : filteredMembers.length === 0 ? (
             <div className="py-12 text-center">
               <Users className="mx-auto h-12 w-12 text-gray-300" />
-
               <p className="mt-4 font-semibold text-gray-900">
                 {search ? "No matching members" : "No campaign members found"}
               </p>
-
               <p className="mt-2 text-sm text-gray-500">
                 {search
                   ? "Try a different search term."
@@ -343,33 +221,19 @@ export default function CampaignMembersPage() {
   );
 }
 
-/*
- * ============================================================
- * HEADER
- * ============================================================
- */
-
 function PageHeader() {
   return (
     <div>
       <p className="text-sm font-semibold text-apc-primary">Campaign Council</p>
-
       <h1 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">
         Member Directory
       </h1>
-
       <p className="mt-2 text-gray-600">
         View campaign members within your organizational area.
       </p>
     </div>
   );
 }
-
-/*
- * ============================================================
- * BACK LINK
- * ============================================================
- */
 
 function BackLink() {
   return (
@@ -383,37 +247,13 @@ function BackLink() {
   );
 }
 
-/*
- * ============================================================
- * MEMBER ROW
- * ============================================================
- */
-
-function MemberRow({
-  member,
-}: {
-  member: {
-    id: string;
-    full_name: string;
-    email: string;
-    phone: string;
-    ward_id: string;
-    polling_unit_id: string;
-    membership_types: string[];
-  };
-}) {
+function MemberRow({ member }: { member: any }) {
   const ward = getWardById(member.ward_id);
-
-  const pollingUnit = getPollingUnitById(
-    member.ward_id,
-    member.polling_unit_id,
-  );
+  const pollingUnit = getPollingUnitById(member.ward_id, member.polling_unit_id);
 
   return (
     <div className="rounded-xl border p-4 transition-colors hover:bg-gray-50">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        {/* IDENTITY */}
-
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-apc-primary/10 font-bold text-apc-primary">
             {member.full_name?.charAt(0)?.toUpperCase() ?? "M"}
@@ -425,39 +265,32 @@ function MemberRow({
             </p>
 
             <div className="mt-1 flex flex-wrap gap-2">
-              {member.membership_types?.map((type) => (
+              {member.membership_types?.map((type: string) => (
                 <span
                   key={type}
                   className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600"
                 >
-                  {formatMembership(type)}
+                  {type.replace("_", " ")}
                 </span>
               ))}
             </div>
           </div>
         </div>
 
-        {/* LOCATION */}
-
         <div className="text-sm">
           <div className="flex items-center gap-2 text-gray-600">
             <MapPin className="h-4 w-4 text-gray-400" />
-
-            <span>{ward ? ward.name : member.ward_id}</span>
+            <span>{ward ? ward.name : member.ward_id || "State-wide"}</span>
           </div>
-
           <p className="mt-1 pl-6 text-xs text-gray-400">
-            {pollingUnit ? pollingUnit.name : member.polling_unit_id}
+            {pollingUnit ? pollingUnit.name : member.polling_unit_id || "All PUs"}
           </p>
         </div>
-
-        {/* CONTACT */}
 
         <div className="space-y-1 text-sm text-gray-500">
           {member.phone && (
             <div className="flex items-center gap-2">
               <Phone className="h-3.5 w-3.5" />
-
               <span>{member.phone}</span>
             </div>
           )}
@@ -465,13 +298,10 @@ function MemberRow({
           {member.email && (
             <div className="flex items-center gap-2">
               <Mail className="h-3.5 w-3.5" />
-
               <span className="truncate">{member.email}</span>
             </div>
           )}
         </div>
-
-        {/* FUTURE PROFILE */}
 
         <Link
           href={`/portal/campaign/members/${member.id}`}
@@ -485,12 +315,6 @@ function MemberRow({
   );
 }
 
-/*
- * ============================================================
- * LOADING
- * ============================================================
- */
-
 function DirectoryLoading() {
   return (
     <div className="mt-5 space-y-3">
@@ -499,36 +323,4 @@ function DirectoryLoading() {
       ))}
     </div>
   );
-}
-
-/*
- * ============================================================
- * POSITION
- * ============================================================
- */
-
-function formatPosition(position: OrganizationalPosition) {
-  const labels: Record<OrganizationalPosition, string> = {
-    campaign_member: "Campaign Member",
-    ward_coordinator: "Ward Coordinator",
-    lga_coordinator: "LGA Coordinator",
-    zone_coordinator: "Zone Coordinator",
-    state_coordinator: "State Coordinator",
-    campaign_manager: "Campaign Manager",
-    council_chairman: "Council Chairman",
-  };
-
-  return labels[position];
-}
-
-/*
- * ============================================================
- * MEMBERSHIP
- * ============================================================
- */
-
-function formatMembership(membership: string) {
-  return membership
-    .replace("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

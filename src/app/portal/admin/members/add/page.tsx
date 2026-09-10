@@ -2,9 +2,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createMemberByAdmin } from "@/lib/firebase/auth";
-import { nkanuWestElectoralData } from "@/data/electoral";
+import { getAllLGAs } from "@/lib/constants";
 import { useAuth } from "@/contexts/AuthContext";
-import type { MembershipType, Role } from "@/types";
+import type { MembershipType, Role, LGA } from "@/types";
 
 export default function AddMemberPage() {
   const router = useRouter();
@@ -16,11 +16,22 @@ export default function AddMemberPage() {
     }
   }, [authLoading, profile, router]);
 
+  const [lgas, setLgas] = useState<LGA[]>([]);
+
+  useEffect(() => {
+    async function loadLgas() {
+      const data = await getAllLGAs();
+      setLgas(data);
+    }
+    loadLgas();
+  }, []);
+
   const [form, setForm] = useState<{
     full_name: string;
     email: string;
     password: string;
     phone: string;
+    lga_id: string;
     ward_id: string;
     polling_unit_id: string;
     membership_types: MembershipType[];
@@ -35,6 +46,7 @@ export default function AddMemberPage() {
     email: "",
     password: "",
     phone: "",
+    lga_id: "",
     ward_id: "",
     polling_unit_id: "",
     membership_types: ["campaign_member"],
@@ -48,9 +60,10 @@ export default function AddMemberPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const selectedWard = nkanuWestElectoralData.find(
-    (ward) => ward.id === form.ward_id,
-  );
+  const selectedLga = lgas.find((lga) => lga.id === form.lga_id);
+  const wards = selectedLga?.wards ?? [];
+
+  const selectedWard = wards.find((ward) => ward.id === form.ward_id);
   const pollingUnits = selectedWard?.pollingUnits ?? [];
 
   const handleRoleToggle = (type: MembershipType) => {
@@ -73,6 +86,7 @@ export default function AddMemberPage() {
       {
         full_name: form.full_name,
         phone: form.phone,
+        lga_id: form.lga_id,
         ward_id: form.ward_id,
         polling_unit_id: form.polling_unit_id,
         membership_types: form.membership_types,
@@ -157,6 +171,29 @@ export default function AddMemberPage() {
             />
           </div>
           <div>
+            <label className="block text-sm font-medium mb-2">LGA *</label>
+            <select
+              required
+              value={form.lga_id}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  lga_id: e.target.value,
+                  ward_id: "",
+                  polling_unit_id: "",
+                })
+              }
+              className="w-full px-4 py-3 border rounded-lg"
+            >
+              <option value="">Select LGA</option>
+              {lgas.map((lga) => (
+                <option key={lga.id} value={lga.id}>
+                  {lga.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-sm font-medium mb-2">Ward *</label>
             <select
               required
@@ -168,10 +205,13 @@ export default function AddMemberPage() {
                   polling_unit_id: "",
                 })
               }
-              className="w-full px-4 py-3 border rounded-lg"
+              disabled={!form.lga_id}
+              className="w-full px-4 py-3 border rounded-lg disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
-              <option value="">Select ward</option>
-              {nkanuWestElectoralData.map((ward) => (
+              <option value="">
+                {form.lga_id ? "Select ward" : "Select an LGA first"}
+              </option>
+              {wards.map((ward) => (
                 <option key={ward.id} value={ward.id}>
                   {ward.code} — {ward.name}
                 </option>
