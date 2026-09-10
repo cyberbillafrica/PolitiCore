@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
+import dotenv from "dotenv";
 import type { EnuguStateElectoralData, LGA } from "../src/types";
+dotenv.config({ path: ".env.local" });
 
 function formatLgaNameAndCode(filename: string) {
   // e.g. "Nkanu_West_PUs.ts" -> "nkanu-west"

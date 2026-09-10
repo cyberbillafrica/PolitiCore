@@ -36,6 +36,14 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { logOut } from "@/lib/firebase/auth";
 import { getElectoralLocation } from "@/lib/constants";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 import type { Ward, PollingUnit } from "@/data/electoral";
 import type { Permission, Announcement } from "@/types";
@@ -918,18 +926,27 @@ function UserPanel({
           </p>
 
           {announcements.slice(0, 2).map((announcement) => (
-            <div
-              key={announcement.id}
-              className="rounded-lg bg-apc-light/50 p-2"
-            >
-              <p className="text-xs font-medium text-gray-800">
-                {announcement.title}
-              </p>
+            <Dialog key={announcement.id}>
+              <DialogTrigger className="w-full rounded-lg bg-apc-light/50 p-2 text-left transition-colors hover:bg-apc-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-apc-primary">
+                <span className="block text-xs font-medium text-gray-800">
+                  {announcement.title}
+                </span>
 
-              <p className="mt-1 line-clamp-2 text-xs text-gray-600">
-                {announcement.content}
-              </p>
-            </div>
+                <span className="mt-1 block line-clamp-2 text-xs text-gray-600">
+                  {announcement.content}
+                </span>
+              </DialogTrigger>
+
+              <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>{announcement.title}</DialogTitle>
+
+                  <DialogDescription className="whitespace-pre-wrap leading-6">
+                    {announcement.content}
+                  </DialogDescription>
+                </DialogHeader>
+              </DialogContent>
+            </Dialog>
           ))}
         </div>
       )}
