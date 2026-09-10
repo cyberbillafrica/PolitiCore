@@ -22,10 +22,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   createCampaignIssue,
   getScopedCampaignIssues,
+  getAllCampaignIssues,
   type CampaignIssue,
   type CampaignIssuePriority,
   type CampaignIssueType,
 } from "@/lib/firebase/campaignIssues";
+import { isAdminUser } from "@/lib/permissions";
 
 import {
   formatScopeType,
@@ -74,22 +76,25 @@ export default function CampaignIssuesPage() {
    * ----------------------------------------------------------
    */
 
+  const isAdmin = isAdminUser(profile);
+
   const loadIssues = async () => {
-    if (!assignment) {
-      setIssues([]);
-      setLoading(false);
-      return;
-    }
+    if (!profile) return;
 
     try {
       setError(null);
 
-      const data = await getScopedCampaignIssues(assignment);
-
-      setIssues(data);
+      if (isAdmin) {
+        const data = await getAllCampaignIssues();
+        setIssues(data);
+      } else if (assignment) {
+        const data = await getScopedCampaignIssues(assignment);
+        setIssues(data);
+      } else {
+        setIssues([]);
+      }
     } catch (err) {
       console.error("Failed to load campaign issues:", err);
-
       setError("Unable to load issues for your organizational scope.");
     } finally {
       setLoading(false);
@@ -101,7 +106,7 @@ export default function CampaignIssuesPage() {
     if (accessLoading) return;
 
     loadIssues();
-  }, [accessLoading, assignment?.id]);
+  }, [accessLoading, assignment?.id, isAdmin]);
 
   /*
    * ----------------------------------------------------------
@@ -157,7 +162,7 @@ export default function CampaignIssuesPage() {
    * ----------------------------------------------------------
    */
 
-  if (!assignment) {
+  if (!assignment && !isAdmin) {
     return (
       <div className="space-y-6 pb-8">
         <BackLink />
@@ -171,9 +176,7 @@ export default function CampaignIssuesPage() {
             </h2>
 
             <p className="mx-auto mt-2 max-w-lg text-sm text-gray-500">
-              Issues are loaded according to your campaign organizational
-              assignment. An administrator must assign you to a campaign area
-              before scoped issues can be shown.
+              An administrator must assign you to a campaign organizational position before scoped campaign issues can be displayed.
             </p>
           </CardContent>
         </Card>
@@ -216,10 +219,12 @@ export default function CampaignIssuesPage() {
             </p>
 
             <p className="mt-1 font-semibold text-gray-900">
-              {formatScopeType(assignment.scope_type)}
+              {isAdmin ? "Global Campaign Scope" : formatScopeType(assignment?.scope_type || null)}
             </p>
 
-            <p className="text-sm text-gray-500">{assignment.scope_id}</p>
+            <p className="text-sm text-gray-500">
+              {isAdmin ? "State-Wide" : assignment?.scope_id}
+            </p>
           </div>
         </div>
       </section>
@@ -274,7 +279,16 @@ export default function CampaignIssuesPage() {
       {showForm && canReport && (
         <IssueForm
           profileId={profile.id ?? ""}
-          assignment={assignment}
+          assignment={assignment || {
+            id: "admin-global",
+            tenant_id: profile.tenant_id || "ifeanyi-4-nkanu",
+            user_id: profile.id || "",
+            position: "state_coordinator",
+            scope_type: "campaign",
+            scope_id: "enugu-state",
+            status: "active",
+            assigned_by: "system",
+          }}
           onCreated={async () => {
             setShowForm(false);
             await loadIssues();

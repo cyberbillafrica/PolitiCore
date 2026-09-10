@@ -155,11 +155,32 @@ export async function getMyCampaignReports(
 
 /*
  * ============================================================
+ * ALL TENANT REPORTS (ADMIN GLOBAL)
+ * ============================================================
+ */
+
+export async function getAllCampaignReportsForTenant(
+  tenantId: string,
+): Promise<CampaignFieldReport[]> {
+  if (!tenantId) {
+    return [];
+  }
+
+  const q = query(
+    collection(db, COLLECTION),
+    where("tenant_id", "==", tenantId),
+    orderBy("created_at", "desc"),
+  );
+
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((item) => mapReport(item.id, item.data()));
+}
+
+/*
+ * ============================================================
  * SCOPED REPORTS
  * ============================================================
- *
- * Coordinators can request reports belonging to their
- * organizational scope.
  */
 
 export async function getScopedCampaignReports(

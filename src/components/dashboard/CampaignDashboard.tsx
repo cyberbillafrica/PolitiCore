@@ -536,32 +536,6 @@ export default function CampaignDashboard() {
             action="View Issues"
           />
 
-          <DashboardCard
-            icon={<Megaphone className="h-6 w-6 text-indigo-600" />}
-            iconBackground="bg-indigo-100"
-            title="Communications"
-            description="Read campaign notices, directives and operational announcements."
-            href="/portal/campaign/communications"
-            action="View Notices"
-          />
-
-          <DashboardCard
-            icon={<Flag className="h-6 w-6 text-pink-600" />}
-            iconBackground="bg-pink-100"
-            title="Documents"
-            description="Access campaign documents, resources, forms and approved materials."
-            href="/portal/campaign/documents"
-            action="View Documents"
-          />
-
-          <DashboardCard
-            icon={<CalendarDays className="h-6 w-6 text-teal-600" />}
-            iconBackground="bg-teal-100"
-            title="Campaign Calendar"
-            description="See campaign meetings, activities, deadlines and upcoming events."
-            href="/portal/campaign/calendar"
-            action="Open Calendar"
-          />
         </div>
       </section>
 
@@ -669,42 +643,6 @@ export default function CampaignDashboard() {
           </CardContent>
         </Card>
 
-        {/* Communications */}
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Campaign Communications</CardTitle>
-
-            <p className="text-sm text-gray-500">
-              Stay informed about campaign operations.
-            </p>
-          </CardHeader>
-
-          <CardContent>
-            <div className="space-y-3">
-              <PriorityRow
-                icon={<Bell className="h-4 w-4" />}
-                title="Campaign notices"
-                description="View directives and operational announcements."
-                href="/portal/campaign/communications"
-              />
-
-              <PriorityRow
-                icon={<Megaphone className="h-4 w-4" />}
-                title="Campaign resources"
-                description="Access approved campaign materials."
-                href="/portal/campaign/documents"
-              />
-
-              <PriorityRow
-                icon={<CalendarDays className="h-4 w-4" />}
-                title="Campaign calendar"
-                description="View upcoming meetings and activities."
-                href="/portal/campaign/calendar"
-              />
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* ======================================================

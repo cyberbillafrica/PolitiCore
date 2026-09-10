@@ -2,6 +2,7 @@ import type {
   OrganizationalAssignment,
   OrganizationalPosition,
   ScopeType,
+  LGA,
 } from "@/types";
 
 export type OrganizationalScope = {
@@ -83,16 +84,6 @@ export function formatScopeType(scopeType: ScopeType | null): string {
 
 /**
  * Select the user's primary active organizational assignment.
- *
- * A person may eventually have multiple assignments.
- *
- * For example:
- *
- *   Ward Coordinator
- *   + Campaign Committee Member
- *
- * We currently use a predictable priority rather than allowing
- * dashboard rendering to depend on Firestore ordering.
  */
 export function getPrimaryOrganizationalAssignment(
   assignments: OrganizationalAssignment[],
@@ -146,4 +137,92 @@ export function getPrimaryOrganizationalScope(
     scopeId: assignment.scope_id,
     label: formatOrganizationalPosition(assignment.position),
   };
+}
+
+/**
+ * Given an assignment (or active assignments list), return all ward IDs
+ * covered under that assignment's scope (e.g. LGA scope returning all ward IDs in that LGA).
+ */
+export function getCoveredWardIds(
+  assignments: OrganizationalAssignment[],
+  lgas: LGA[],
+): string[] {
+  const active = assignments.filter((a) => a.status === "active");
+  if (!active.length) return [];
+
+  const wardIds = new Set<string>();
+
+  for (const a of active) {
+    if (a.scope_type === "campaign" || a.scope_type === "state" || a.scope_type === "senatorial_zone") {
+      // Covers all wards in all LGAs
+      for (const lga of lgas) {
+        for (const ward of lga.wards) {
+          wardIds.add(ward.id);
+        }
+      }
+    } else if (a.scope_type === "lga") {
+      const lga = lgas.find((l) => l.id === a.scope_id || l.id.toLowerCase() === a.scope_id.toLowerCase());
+      if (lga) {
+        for (const ward of lga.wards) {
+          wardIds.add(ward.id);
+        }
+      }
+    } else if (a.scope_type === "ward") {
+      if (a.scope_id) {
+        wardIds.add(a.scope_id);
+      }
+    }
+  }
+
+  return Array.from(wardIds);
+}
+
+/**
+ * Given an assignment (or active assignments list), return all polling unit IDs
+ * covered under that assignment's scope.
+ */
+export function getCoveredPollingUnitIds(
+  assignments: OrganizationalAssignment[],
+  lgas: LGA[],
+): string[] {
+  const active = assignments.filter((a) => a.status === "active");
+  if (!active.length) return [];
+
+  const puIds = new Set<string>();
+
+  for (const a of active) {
+    if (a.scope_type === "campaign" || a.scope_type === "state" || a.scope_type === "senatorial_zone") {
+      for (const lga of lgas) {
+        for (const ward of lga.wards) {
+          for (const pu of ward.pollingUnits) {
+            puIds.add(pu.id);
+          }
+        }
+      }
+    } else if (a.scope_type === "lga") {
+      const lga = lgas.find((l) => l.id === a.scope_id || l.id.toLowerCase() === a.scope_id.toLowerCase());
+      if (lga) {
+        for (const ward of lga.wards) {
+          for (const pu of ward.pollingUnits) {
+            puIds.add(pu.id);
+          }
+        }
+      }
+    } else if (a.scope_type === "ward") {
+      for (const lga of lgas) {
+        const ward = lga.wards.find((w) => w.id === a.scope_id);
+        if (ward) {
+          for (const pu of ward.pollingUnits) {
+            puIds.add(pu.id);
+          }
+        }
+      }
+    } else if (a.scope_type === "polling_unit") {
+      if (a.scope_id) {
+        puIds.add(a.scope_id);
+      }
+    }
+  }
+
+  return Array.from(puIds);
 }

@@ -118,21 +118,37 @@ export async function createCampaignIssue(data: {
 
 /*
  * ============================================================
- * GET ISSUES FOR AN ORGANIZATIONAL SCOPE
+ * GET ALL ISSUES (ADMIN GLOBAL)
  * ============================================================
- *
- * The page passes the user's active organizational assignment.
- *
- * For the current application we query the exact assigned scope.
- *
- * Hierarchical expansion remains deliberately outside this
- * function until the electoral hierarchy resolver is wired in.
+ */
+
+export async function getAllCampaignIssues(): Promise<CampaignIssue[]> {
+  const q = query(collection(db, "issues"), orderBy("created_at", "desc"));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
+  })) as CampaignIssue[];
+}
+
+/*
+ * ============================================================
+ * GET ISSUES FOR AN ORGANIZATIONAL SCOPE
  * ============================================================
  */
 
 export async function getScopedCampaignIssues(
   assignment: OrganizationalAssignment,
 ): Promise<CampaignIssue[]> {
+  if (
+    assignment.scope_type === "campaign" ||
+    assignment.scope_type === "state" ||
+    assignment.scope_type === "senatorial_zone"
+  ) {
+    return getAllCampaignIssues();
+  }
+
   const q = query(
     collection(db, "issues"),
     where("scope_type", "==", assignment.scope_type),
