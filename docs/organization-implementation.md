@@ -1,6 +1,6 @@
 # Organizational Hierarchy Resolution and Admin Access Implementation Report
 
-**Project:** `ifeanyi-4-nkanu` — Campaign Platform for Chief Uche Geoffrey Nnaji (PDP Governorship Candidate 2027)
+**Project:** `PolitiCore` — Campaign Platform for 2027 Campaign and election
 **Author:** Google Jules (Autonomous Coding Agent)
 **Date:** May 2024
 
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The organizational hierarchy resolution layer of the Ifeanyi 4 Nkanu campaign platform has been fully upgraded and centralized. This architectural refinement addresses two core requirements:
+The organizational hierarchy resolution layer of the PolitiCore campaign platform has been fully upgraded and centralized. This architectural refinement addresses two core requirements:
 1. **Admin Global Access:** Authenticated administrators (`admin`, `tenant_super_admin`, `platform_super_admin`) now possess complete state-wide campaign authority without requiring an `OrganizationalAssignment` record. All misleading blocking messages ("No organizational assignment") have been removed for admins.
 2. **Electoral Hierarchy Scope Inheritance:** Non-admin campaign coordinators now inherit authority over subordinate electoral areas. Scope checking automatically resolves descendants according to the application's authoritative Enugu State electoral data structure:
    $$\text{State / Campaign} \longrightarrow \text{Senatorial Zone} \longrightarrow \text{LGA} \longrightarrow \text{Ward} \longrightarrow \text{Polling Unit}$$
