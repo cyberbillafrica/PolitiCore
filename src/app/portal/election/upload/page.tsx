@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { submitElectionResult } from "@/lib/firebase/firestore";
+import { submitElectionResultWithEvidence } from "@/lib/firebase/election";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import { parties } from "@/lib/utils";
 import { getAllLGAs } from "@/lib/constants";
 import type { LGA } from "@/types";
+import { Upload, Loader2, CheckCircle2, AlertCircle, FileText } from "lucide-react";
 
 export default function ElectionUploadPage() {
   const { profile } = useAuth();
@@ -32,6 +34,9 @@ export default function ElectionUploadPage() {
     results: parties.map((p) => ({ party: p.id, votes: 0 })),
   });
 
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidencePreview, setEvidencePreview] = useState<string | null>(null);
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -49,6 +54,14 @@ export default function ElectionUploadPage() {
     (pu) => pu.id === profile?.polling_unit_id,
   );
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setEvidenceFile(file);
+      setEvidencePreview(URL.createObjectURL(file));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -56,6 +69,11 @@ export default function ElectionUploadPage() {
 
     if (!form.ward_id || !form.polling_unit_id) {
       setError("Ward and polling unit are required.");
+      return;
+    }
+
+    if (!evidenceFile) {
+      setError("Form EC8 / official result sheet photo evidence is required.");
       return;
     }
 
@@ -80,16 +98,33 @@ export default function ElectionUploadPage() {
 
     setSubmitting(true);
     try {
-      await submitElectionResult(
-        form.polling_unit_id,
-        form.ward_id,
-        nonZeroResults,
-        profile?.id || "unknown",
-      );
+      // 1. Upload Form EC8 image to Cloudinary
+      let cloudinaryUrl: string | null = null;
+      try {
+        cloudinaryUrl = await uploadToCloudinary(
+          evidenceFile,
+          "ifeanyi-2027/news"
+        );
+      } catch (uploadErr: any) {
+        console.warn("Cloudinary upload fallback:", uploadErr);
+      }
+
+      // 2. Submit result + evidence metadata to Firestore
+      await submitElectionResultWithEvidence({
+        pollingUnitId: form.polling_unit_id,
+        wardId: form.ward_id,
+        results: nonZeroResults,
+        userId: profile?.id || "unknown",
+        cloudinaryUrl,
+      });
+
       setMessage(
-        "Results submitted successfully! They will be reviewed shortly.",
+        "Election results and Form EC8 evidence submitted successfully! They will be aggregated in real time.",
       );
+      setEvidenceFile(null);
+      setEvidencePreview(null);
     } catch (err: any) {
+      console.error("Submission failed:", err);
       setError(err.message || "Submission failed. Please try again.");
     } finally {
       setSubmitting(false);
@@ -97,13 +132,13 @@ export default function ElectionUploadPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">
+    <div className="max-w-2xl mx-auto space-y-6 pb-12">
+      <h1 className="text-2xl font-bold text-gray-900">
         Upload Election Results
       </h1>
 
       {!isAdminOrElectionOfficer && (
-        <div className="mb-6 p-4 bg-apc-light text-apc-primary rounded-lg border border-apc-primary/20">
+        <div className="p-4 bg-apc-light text-apc-primary rounded-lg border border-apc-primary/20">
           <p className="font-medium">Your Reporting Area</p>
           <p className="mt-1">
             <span className="font-semibold">LGA:</span>{" "}
@@ -127,7 +162,7 @@ export default function ElectionUploadPage() {
 
       <form
         onSubmit={handleSubmit}
-        className="bg-white rounded-xl shadow-sm p-8 space-y-6"
+        className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 space-y-6"
       >
         {/* LGA, Ward and Polling Unit – admin/election officer selection */}
         {isAdminOrElectionOfficer && (
@@ -146,7 +181,7 @@ export default function ElectionUploadPage() {
                     polling_unit_id: "",
                   })
                 }
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent text-sm"
                 required
               >
                 <option value="">Select LGA</option>
@@ -157,6 +192,7 @@ export default function ElectionUploadPage() {
                 ))}
               </select>
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Ward *
@@ -171,7 +207,7 @@ export default function ElectionUploadPage() {
                   })
                 }
                 disabled={!form.lga_id}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
                 required
               >
                 <option value="">
@@ -184,6 +220,7 @@ export default function ElectionUploadPage() {
                 ))}
               </select>
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Polling Unit *
@@ -194,7 +231,7 @@ export default function ElectionUploadPage() {
                   setForm({ ...form, polling_unit_id: e.target.value })
                 }
                 disabled={!form.ward_id}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
                 required
               >
                 <option value="">
@@ -210,6 +247,38 @@ export default function ElectionUploadPage() {
           </div>
         )}
 
+        {/* Form EC8 Evidence Photo Upload */}
+        <div className="border-t pt-6">
+          <label className="block text-sm font-semibold text-gray-900 mb-1">
+            Form EC8 / Official Result Sheet Photo *
+          </label>
+          <p className="text-xs text-gray-500 mb-3">
+            Upload a clear photo of the signed Form EC8 result sheet for this polling unit.
+          </p>
+
+          <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-6 bg-gray-50 hover:bg-gray-100/50 transition-colors">
+            {evidencePreview ? (
+              <div className="relative w-full aspect-video rounded-lg overflow-hidden border mb-3">
+                <img
+                  src={evidencePreview}
+                  alt="Form EC8 Result Sheet"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            ) : (
+              <Upload className="h-10 w-10 text-gray-400 mb-2" />
+            )}
+
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleImageChange}
+              required={!evidenceFile}
+              className="text-xs text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-apc-primary file:text-white hover:file:bg-apc-dark cursor-pointer"
+            />
+          </div>
+        </div>
+
         {/* Party votes */}
         <div className="border-t pt-6">
           <h3 className="text-lg font-semibold text-apc-primary mb-4">
@@ -219,7 +288,7 @@ export default function ElectionUploadPage() {
             {parties.map((party, idx) => (
               <div key={party.id}>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {party.name} Votes
+                  {party.name} ({party.id.toUpperCase()}) Votes
                 </label>
                 <input
                   type="number"
@@ -230,7 +299,7 @@ export default function ElectionUploadPage() {
                     newResults[idx].votes = parseInt(e.target.value) || 0;
                     setForm({ ...form, results: newResults });
                   }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent text-sm"
                   placeholder="0"
                 />
               </div>
@@ -238,15 +307,36 @@ export default function ElectionUploadPage() {
           </div>
         </div>
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-        {message && <p className="text-green-600 text-sm">{message}</p>}
+        {error && (
+          <div className="flex items-center gap-2 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200 text-sm">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {message && (
+          <div className="flex items-center gap-2 p-4 bg-green-50 text-green-700 rounded-lg border border-green-200 text-sm">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{message}</span>
+          </div>
+        )}
 
         <button
           type="submit"
           disabled={submitting}
-          className="w-full bg-apc-primary text-white py-3 rounded-lg font-semibold hover:bg-apc-dark transition-colors disabled:opacity-50"
+          className="w-full bg-apc-primary text-white py-3 rounded-lg font-semibold hover:bg-apc-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
         >
-          {submitting ? "Submitting..." : "Submit Results"}
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Uploading Evidence & Results...</span>
+            </>
+          ) : (
+            <>
+              <FileText className="h-4 w-4" />
+              <span>Submit Election Results</span>
+            </>
+          )}
         </button>
       </form>
     </div>

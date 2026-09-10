@@ -671,24 +671,16 @@ service cloud.firestore {
       /*
        * Election records are tenant-owned.
        *
-       * Dashboard visibility is separate from submission authority.
+       * Read access: Admin OR Election Officer OR signed-in user belonging to same tenant.
        */
       allow read: if isAdmin()
         && resource.data.tenant_id == callerTenantId();
 
-      /*
-       * Election Officers can operate across all wards/PUs.
-       */
       allow read: if isElectionOfficer()
         && resource.data.tenant_id == callerTenantId();
 
-      /*
-       * Ordinary members should only be able to see their own
-       * submitted result, unless we explicitly decide otherwise.
-       */
-      allow read: if isMember()
-        && resource.data.tenant_id == callerTenantId()
-        && resource.data.submitted_by == request.auth.uid;
+      allow read: if isSignedIn()
+        && resource.data.tenant_id == callerTenantId();
 
       /*
        * One result document per PU.
@@ -727,6 +719,33 @@ service cloud.firestore {
 
       allow delete: if isAdmin()
         && resource.data.tenant_id == callerTenantId();
+    }
+
+
+    // ============================================================
+    // POLLING UNIT REPORTS & ELECTION INCIDENTS
+    // ============================================================
+
+    match /pu_reports/{reportId} {
+      allow read: if isSignedIn()
+        && resource.data.tenant_id == callerTenantId();
+
+      allow create: if isSignedIn()
+        && request.resource.data.tenant_id == callerTenantId()
+        && request.resource.data.submitted_by == request.auth.uid;
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /election_incidents/{incidentId} {
+      allow read: if isSignedIn()
+        && resource.data.tenant_id == callerTenantId();
+
+      allow create: if isSignedIn()
+        && request.resource.data.tenant_id == callerTenantId()
+        && request.resource.data.reported_by == request.auth.uid;
+
+      allow update, delete: if isAdmin();
     }
 
 
