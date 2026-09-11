@@ -1,809 +1,954 @@
 rules_version = '2';
 
 service cloud.firestore {
-  match /databases/{database}/documents {
+match /databases/{database}/documents {
 
-    // ============================================================
-    // AUTHENTICATION
-    // ============================================================
+// ============================================================
+// AUTHENTICATION
+// ============================================================
 
-    function isSignedIn() {
-      return request.auth != null;
-    }
+function isSignedIn() {
+  return request.auth != null;
+}
 
-    function userExists() {
-      return isSignedIn()
-        && exists(
-          /databases/$(database)/documents/users/$(request.auth.uid)
-        );
-    }
+function userExists() {
+  return isSignedIn()
+    && exists(
+      /databases/$(database)/documents/users/$(request.auth.uid)
+    );
+}
 
-    function callerProfile() {
-      return get(
-        /databases/$(database)/documents/users/$(request.auth.uid)
-      ).data;
-    }
+function callerProfile() {
+  return get(
+    /databases/$(database)/documents/users/$(request.auth.uid)
+  ).data;
+}
 
-    function callerTenantId() {
-      return userExists()
-        ? callerProfile().tenant_id
-        : null;
-    }
+function callerTenantId() {
+  return userExists()
+    ? callerProfile().tenant_id
+    : null;
+}
 
-    function callerRole() {
-      return userExists()
-        ? callerProfile().access_role
-        : null;
-    }
-
-
-    // ============================================================
-    // ACCESS ROLES
-    // ============================================================
-
-    function isAdmin() {
-      return userExists()
-        && (
-          callerRole() == "admin"
-          || callerRole() == "tenant_super_admin"
-          || callerRole() == "platform_super_admin"
-        );
-    }
-
-    function isElectionOfficer() {
-      return userExists()
-        && callerRole() == "election_officer";
-    }
-
-    function isMember() {
-      return userExists()
-        && callerRole() == "member";
-    }
-
-    function isAdminOrElectionOfficer() {
-      return isAdmin() || isElectionOfficer();
-    }
+function callerRole() {
+  return userExists()
+    ? callerProfile().access_role
+    : null;
+}
 
 
-    // ============================================================
-    // MEMBERSHIP TYPES
-    // ============================================================
+// ============================================================
+// ACCESS ROLES
+// ============================================================
 
-    function isSocialMember() {
-      return isMember()
-        && callerProfile().membership_types.hasAny([
-          "social_member"
-        ]);
-    }
+function isAdmin() {
+  return userExists()
+    && (
+      callerRole() == "admin"
+      || callerRole() == "tenant_super_admin"
+      || callerRole() == "platform_super_admin"
+    );
+}
 
-    function isCampaignMember() {
-      return isMember()
-        && callerProfile().membership_types.hasAny([
-          "campaign_member"
-        ]);
-    }
+function isElectionOfficer() {
+  return userExists()
+    && callerRole() == "election_officer";
+}
 
+function isMember() {
+  return userExists()
+    && callerRole() == "member";
+}
 
-    // ============================================================
-    // OWNERSHIP
-    // ============================================================
-
-    function isOwner(userId) {
-      return isSignedIn()
-        && request.auth.uid == userId;
-    }
-
-
-    // ============================================================
-    // TENANT
-    // ============================================================
-
-    function sameTenant(data) {
-      return userExists()
-        && data.tenant_id == callerTenantId();
-    }
-
-    function requestedSameTenant(data) {
-      return userExists()
-        && data.tenant_id == callerTenantId();
-    }
+function isAdminOrElectionOfficer() {
+  return isAdmin() || isElectionOfficer();
+}
 
 
-    // ============================================================
-    // SECURITY ACCESS INDEX
-    // ============================================================
+// ============================================================
+// MEMBERSHIP TYPES
+// ============================================================
 
-    /*
-     * Access ID format:
-     *
-     * UID__permission__scope_type__scope_id
-     *
-     * Global:
-     *
-     * UID__permission__global
-     */
+function isSocialMember() {
+  return isMember()
+    && callerProfile().membership_types.hasAny([
+      "social_member"
+    ]);
+}
 
-    function hasGlobalAccess(permission) {
-      return isSignedIn()
-        && exists(
-          /databases/$(database)/documents/user_access/
-          $(request.auth.uid + "__" + permission + "__global")
+function isCampaignMember() {
+  return isMember()
+    && callerProfile().membership_types.hasAny([
+      "campaign_member"
+    ]);
+}
+
+
+// ============================================================
+// OWNERSHIP
+// ============================================================
+
+function isOwner(userId) {
+  return isSignedIn()
+    && request.auth.uid == userId;
+}
+
+
+// ============================================================
+// TENANT
+// ============================================================
+
+function sameTenant(data) {
+  return userExists()
+    && data.tenant_id == callerTenantId();
+}
+
+// ============================================================
+// SECURITY ACCESS INDEX
+// ============================================================
+
+function hasGlobalAccess(permission) {
+  return isSignedIn()
+    && exists(
+      /databases/$(database)/documents/user_access/
+      $(request.auth.uid + "__" + permission + "__global")
+    )
+    && get(
+      /databases/$(database)/documents/user_access/
+      $(request.auth.uid + "__" + permission + "__global")
+    ).data.allowed == true
+    && get(
+      /databases/$(database)/documents/user_access/
+      $(request.auth.uid + "__" + permission + "__global")
+    ).data.user_id == request.auth.uid
+    && get(
+      /databases/$(database)/documents/user_access/
+      $(request.auth.uid + "__" + permission + "__global")
+    ).data.tenant_id == callerTenantId();
+}
+
+function hasScopedAccess(permission, scopeType, scopeId) {
+  return isSignedIn()
+    && exists(
+      /databases/$(database)/documents/user_access/
+      $(request.auth.uid + "__" + permission + "__" + scopeType + "__" + scopeId)
+    )
+    && get(
+      /databases/$(database)/documents/user_access/
+      $(request.auth.uid + "__" + permission + "__" + scopeType + "__" + scopeId)
+    ).data.allowed == true
+    && get(
+      /databases/$(database)/documents/user_access/
+      $(request.auth.uid + "__" + permission + "__" + scopeType + "__" + scopeId)
+    ).data.user_id == request.auth.uid
+    && get(
+      /databases/$(database)/documents/user_access/
+      $(request.auth.uid + "__" + permission + "__" + scopeType + "__" + scopeId)
+    ).data.tenant_id == callerTenantId();
+}
+
+function hasAccess(permission, scopeType, scopeId) {
+  return hasGlobalAccess(permission)
+    || hasScopedAccess(permission, scopeType, scopeId);
+}
+
+
+// ============================================================
+// ELECTION
+// ============================================================
+
+function electionModeEnabled() {
+  return userExists()
+    && callerTenantId() != null
+    && exists(
+      /databases/$(database)/documents/tenants/
+      $(callerTenantId())
+    )
+    && get(
+      /databases/$(database)/documents/tenants/
+      $(callerTenantId())
+    ).data.election_mode_enabled == true;
+}
+
+/*
+ * Ordinary Election access belongs to campaign members.
+ *
+ * A campaign member does NOT need an organizational assignment
+ * simply to submit/view the result for their registered PU.
+ */
+function registeredAt(wardId, pollingUnitId) {
+  return isCampaignMember()
+    && callerProfile().ward_id == wardId
+    && callerProfile().polling_unit_id == pollingUnitId;
+}
+
+
+
+/*
+ * A campaign member may read their registered PU.
+ *
+ * Officers/admins have tenant-wide Election visibility.
+ *
+ * Explicit organizational Election access can also be granted
+ * through user_access.
+ */
+function canReadElectionResult(data) {
+  return sameTenant(data)
+    && (
+      isAdmin()
+      || isElectionOfficer()
+      || (
+        registeredAt(
+          data.ward_id,
+          data.polling_unit_id
         )
-        && get(
-          /databases/$(database)/documents/user_access/
-          $(request.auth.uid + "__" + permission + "__global")
-        ).data.allowed == true
-        && get(
-          /databases/$(database)/documents/user_access/
-          $(request.auth.uid + "__" + permission + "__global")
-        ).data.user_id == request.auth.uid
-        && get(
-          /databases/$(database)/documents/user_access/
-          $(request.auth.uid + "__" + permission + "__global")
-        ).data.tenant_id == callerTenantId();
-    }
-
-    function hasScopedAccess(permission, scopeType, scopeId) {
-      return isSignedIn()
-        && exists(
-          /databases/$(database)/documents/user_access/
-          $(request.auth.uid + "__" + permission + "__" + scopeType + "__" + scopeId)
-        )
-        && get(
-          /databases/$(database)/documents/user_access/
-          $(request.auth.uid + "__" + permission + "__" + scopeType + "__" + scopeId)
-        ).data.allowed == true
-        && get(
-          /databases/$(database)/documents/user_access/
-          $(request.auth.uid + "__" + permission + "__" + scopeType + "__" + scopeId)
-        ).data.user_id == request.auth.uid
-        && get(
-          /databases/$(database)/documents/user_access/
-          $(request.auth.uid + "__" + permission + "__" + scopeType + "__" + scopeId)
-        ).data.tenant_id == callerTenantId();
-    }
-
-    function hasAccess(permission, scopeType, scopeId) {
-      return hasGlobalAccess(permission)
-        || hasScopedAccess(permission, scopeType, scopeId);
-    }
-
-
-    // ============================================================
-    // ELECTION
-    // ============================================================
-
-    function electionModeEnabled() {
-      return userExists()
-        && callerTenantId() != null
-        && exists(
-          /databases/$(database)/documents/tenants/
-          $(callerTenantId())
-        )
-        && get(
-          /databases/$(database)/documents/tenants/
-          $(callerTenantId())
-        ).data.election_mode_enabled == true;
-    }
-
-    function registeredAt(wardId, pollingUnitId) {
-      return isMember()
-        && callerProfile().ward_id == wardId
-        && callerProfile().polling_unit_id == pollingUnitId;
-    }
-
-    function canSubmitElectionActivity(wardId, pollingUnitId) {
-      return isAdminOrElectionOfficer()
-        || registeredAt(wardId, pollingUnitId);
-    }
-
-
-    // ============================================================
-    // USERS
-    // ============================================================
-
-    match /users/{userId} {
-
-      /*
-       * Admins can manage users.
-       * Members can read/update only themselves.
-       */
-      allow read: if isAdmin()
-        || isOwner(userId);
-
-      allow create: if isAdmin();
-
-      /*
-       * Self-registration.
-       *
-       * A new client-created account must begin as:
-       *   access_role = member
-       *   points = 0
-       */
-      allow create: if isOwner(userId)
-        && request.resource.data.access_role == "member"
-        && request.resource.data.points == 0;
-
-      /*
-       * Ordinary users may not alter security-sensitive fields.
-       */
-      allow update: if isOwner(userId)
-        && request.resource.data.access_role
-          == resource.data.access_role
-        && request.resource.data.tenant_id
-          == resource.data.tenant_id
-        && request.resource.data.membership_types
-          == resource.data.membership_types
-        && request.resource.data.points
-          == resource.data.points
-        && request.resource.data.rank
-          == resource.data.rank;
+      )
+      || hasGlobalAccess("view_election_results")
+      || hasScopedAccess(
+        "view_election_results",
+        "ward",
+        data.ward_id
+      )
+      || hasScopedAccess(
+        "view_election_results",
+        "polling_unit",
+        data.polling_unit_id
+      )
+    );
+}
+
+
+// ============================================================
+// ELECTION RESULT UPDATE HELPERS
+// ============================================================
+
+/*
+ * Election Officers are the only actors who can perform
+ * workflow review actions.
+ *
+ * Admins do NOT get approval authority simply because they
+ * have administrative access.
+ */
+function officerReviewUpdate() {
+  return isElectionOfficer()
+    && sameTenant(resource.data)
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.ward_id == resource.data.ward_id
+    && request.resource.data.polling_unit_id
+      == resource.data.polling_unit_id
+    && request.resource.data.submitted_by
+      == resource.data.submitted_by
+    && request.resource.data.reviewed_by
+      == request.auth.uid
+    && request.resource.data.verified
+      == (request.resource.data.status == "approved")
+    && request.resource.data.diff(resource.data).affectedKeys()
+      .hasOnly([
+        "status",
+        "verified",
+        "review_notes",
+        "reviewed_by",
+        "reviewed_at",
+        "history",
+        "updated_at"
+      ]);
+}
+
+/*
+ * Valid Officer workflow transitions.
+ *
+ * submitted/pending_review
+ *     -> approved
+ *     -> rejected
+ *     -> clarification_required
+ *
+ * clarification_required
+ *     -> submitted
+ *     -> pending_review
+ *
+ * approved
+ *     -> reopened
+ *
+ * reopened
+ *     -> approved/rejected/clarification_required
+ *
+ * rejected
+ *     -> submitted/pending_review
+ */
+function validOfficerTransition() {
+  return
+    (
+      (
+        resource.data.status == "submitted"
+        || resource.data.status == "pending_review"
+      )
+      && (
+        request.resource.data.status == "approved"
+        || request.resource.data.status == "rejected"
+        || request.resource.data.status == "clarification_required"
+      )
+    )
+    ||
+    (
+      resource.data.status == "clarification_required"
+      && (
+        request.resource.data.status == "submitted"
+        || request.resource.data.status == "pending_review"
+      )
+    )
+    ||
+    (
+      resource.data.status == "approved"
+      && request.resource.data.status == "reopened"
+    )
+    ||
+    (
+      resource.data.status == "reopened"
+      && (
+        request.resource.data.status == "approved"
+        || request.resource.data.status == "rejected"
+        || request.resource.data.status == "clarification_required"
+      )
+    )
+    ||
+    (
+      resource.data.status == "rejected"
+      && (
+        request.resource.data.status == "submitted"
+        || request.resource.data.status == "pending_review"
+      )
+    );
+}
+
+
+/*
+ * Administrative correction.
+ *
+ * Admin correction may change typed vote values and append
+ * audit history, but it cannot:
+ *
+ *   - change tenant
+ *   - change PU/ward
+ *   - change submitter
+ *   - change status
+ *   - change verified
+ *   - impersonate an Election Officer
+ *
+ * This preserves the distinction between administrative
+ * correction and Election Officer approval.
+ */
+function adminCorrectionUpdate() {
+  return isAdmin()
+    && sameTenant(resource.data)
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.ward_id == resource.data.ward_id
+    && request.resource.data.polling_unit_id
+      == resource.data.polling_unit_id
+    && request.resource.data.submitted_by
+      == resource.data.submitted_by
+    && request.resource.data.status == resource.data.status
+    && request.resource.data.verified == resource.data.verified
+    && request.resource.data.diff(resource.data).affectedKeys()
+      .hasOnly([
+        "results",
+        "history",
+        "updated_at"
+      ]);
+}
+
+
+// ============================================================
+// USERS
+// ============================================================
+
+match /users/{userId} {
+
+  allow read: if isAdmin()
+    || isOwner(userId);
+
+  allow create: if isAdmin();
+
+  allow create: if isOwner(userId)
+    && request.resource.data.access_role == "member"
+    && request.resource.data.points == 0;
+
+  allow update: if isOwner(userId)
+    && request.resource.data.access_role
+      == resource.data.access_role
+    && request.resource.data.tenant_id
+      == resource.data.tenant_id
+    && request.resource.data.membership_types
+      == resource.data.membership_types
+    && request.resource.data.points
+      == resource.data.points
+    && request.resource.data.rank
+      == resource.data.rank;
+
+  allow update: if isAdmin();
+
+  allow delete: if isAdmin();
+}
+
+
+// ============================================================
+// SOCIAL MEDIA TASKS
+// ============================================================
+
+match /tasks/{taskId} {
+
+  allow read: if isAdmin();
+
+  allow read: if isSocialMember()
+    && resource.data.status == "active";
+
+  allow create, update, delete: if isAdmin();
+}
+
+
+// ============================================================
+// TASK SUBMISSIONS
+// ============================================================
 
-      allow update: if isAdmin();
+match /task_submissions/{submissionId} {
 
-      allow delete: if isAdmin();
-    }
+  allow read: if isAdmin();
 
+  allow read: if isSocialMember()
+    && resource.data.user_id == request.auth.uid;
+
+  allow create: if isSocialMember()
+    && request.resource.data.user_id == request.auth.uid
+    && request.resource.data.status == "pending"
+    && exists(
+      /databases/$(database)/documents/tasks/
+      $(request.resource.data.task_id)
+    )
+    && get(
+      /databases/$(database)/documents/tasks/
+      $(request.resource.data.task_id)
+    ).data.status == "active"
+    && submissionId
+      == request.resource.data.task_id
+         + "_"
+         + request.auth.uid;
 
-    // ============================================================
-    // SOCIAL MEDIA TASKS
-    // ============================================================
+  allow update: if isAdmin();
 
-    match /tasks/{taskId} {
+  allow delete: if isAdmin();
+}
 
-      allow read: if isAdmin();
 
-      allow read: if isSocialMember()
-        && resource.data.status == "active";
+// ============================================================
+// NEWS
+// ============================================================
 
-      allow create, update, delete: if isAdmin();
-    }
+match /news/{newsId} {
 
+  allow read: if
+    resource.data.status == "published"
+    || resource.data.published == true
+    || isAdmin();
 
-    // ============================================================
-    // TASK SUBMISSIONS
-    // ============================================================
+  allow create, update, delete: if isAdmin();
+}
 
-    match /task_submissions/{submissionId} {
 
-      allow read: if isAdmin();
+// ============================================================
+// LEGACY EVENTS
+// ============================================================
 
-      allow read: if isSocialMember()
-        && resource.data.user_id == request.auth.uid;
+match /events/{eventId} {
 
-      allow create: if isSocialMember()
-        && request.resource.data.user_id == request.auth.uid
-        && request.resource.data.status == "pending"
-        && exists(
-          /databases/$(database)/documents/tasks/
-          $(request.resource.data.task_id)
-        )
-        && get(
-          /databases/$(database)/documents/tasks/
-          $(request.resource.data.task_id)
-        ).data.status == "active"
-        && submissionId
-          == request.resource.data.task_id
-             + "_"
-             + request.auth.uid;
+  allow read: if true;
 
-      allow update: if isAdmin();
+  allow create, update, delete: if isAdmin();
+}
 
-      allow delete: if isAdmin();
-    }
 
+// ============================================================
+// PUBLIC BIOGRAPHY
+// ============================================================
 
-    // ============================================================
-    // NEWS
-    // ============================================================
+match /biographies/{tenantId} {
 
-    match /news/{newsId} {
+  allow read: if true;
 
-      /*
-       * Public visitors can read published articles.
-       * Legacy published:true remains supported.
-       */
-      allow read: if
-        resource.data.status == "published"
-        || resource.data.published == true
-        || isAdmin();
+  allow create, update: if isAdmin()
+    && tenantId == callerTenantId()
+    && request.resource.data.tenant_id == tenantId;
 
-      allow create, update, delete: if isAdmin();
-    }
+  allow delete: if isAdmin()
+    && tenantId == callerTenantId();
+}
 
 
-    // ============================================================
-    // LEGACY EVENTS
-    // ============================================================
+// ============================================================
+// PUBLIC MANIFESTO
+// ============================================================
 
-    match /events/{eventId} {
+match /manifestos/{tenantId} {
 
-      allow read: if true;
+  allow read: if
+    resource.data.status == "published"
+    || isAdmin();
 
-      allow create, update, delete: if isAdmin();
-    }
+  allow create, update: if isAdmin()
+    && tenantId == callerTenantId()
+    && request.resource.data.tenant_id == tenantId;
 
+  allow delete: if false;
+}
 
-    // ============================================================
-    // PUBLIC BIOGRAPHY
-    // ============================================================
 
-    match /biographies/{tenantId} {
+// ============================================================
+// PUBLIC GALLERY
+// ============================================================
 
-      allow read: if true;
+match /galleries/{tenantId} {
 
-      allow create, update: if isAdmin()
-        && tenantId == callerTenantId()
-        && request.resource.data.tenant_id == tenantId;
+  allow read: if true;
 
-      allow delete: if isAdmin()
-        && tenantId == callerTenantId();
-    }
+  allow create, update: if isAdmin()
+    && tenantId == callerTenantId()
+    && request.resource.data.tenant_id == tenantId;
 
+  allow delete: if isAdmin()
+    && tenantId == callerTenantId();
+}
 
-    // ============================================================
-    // PUBLIC MANIFESTO
-    // ============================================================
 
-    match /manifestos/{tenantId} {
+// ============================================================
+// PORTAL CONTENT
+// ============================================================
 
-      allow read: if
-        resource.data.status == "published"
-        || isAdmin();
+match /portal_content/{tenantId} {
 
-      allow create, update: if isAdmin()
-        && tenantId == callerTenantId()
-        && request.resource.data.tenant_id == tenantId;
+  allow read: if true;
 
-      allow delete: if isAdmin()
-        && tenantId == callerTenantId();
-    }
+  allow create, update: if isAdmin()
+    && tenantId == callerTenantId()
+    && request.resource.data.tenant_id == tenantId;
 
+  allow delete: if isAdmin()
+    && tenantId == callerTenantId();
+}
 
-    // ============================================================
-    // PUBLIC GALLERY
-    // ============================================================
 
-    match /galleries/{tenantId} {
+// ============================================================
+// ORGANIZATIONAL ASSIGNMENTS
+// ============================================================
 
-      allow read: if true;
+match /organizational_assignments/{assignmentId} {
 
-      allow create, update: if isAdmin()
-        && tenantId == callerTenantId()
-        && request.resource.data.tenant_id == tenantId;
+  allow read: if isAdmin()
+    || (
+      isSignedIn()
+      && resource.data.user_id == request.auth.uid
+      && resource.data.tenant_id == callerTenantId()
+    );
 
-      allow delete: if isAdmin()
-        && tenantId == callerTenantId();
-    }
+  allow create, update, delete: if isAdmin()
+    && request.resource.data.tenant_id == callerTenantId();
+}
 
 
-    // ============================================================
-    // PORTAL CONTENT
-    // ============================================================
+// ============================================================
+// PERMISSION GRANTS
+// ============================================================
 
-    match /portal_content/{tenantId} {
+match /permission_grants/{grantId} {
 
-      allow read: if true;
+  allow read: if isAdmin()
+    || (
+      isSignedIn()
+      && resource.data.user_id == request.auth.uid
+      && resource.data.tenant_id == callerTenantId()
+    );
 
-      allow create, update: if isAdmin()
-        && tenantId == callerTenantId()
-        && request.resource.data.tenant_id == tenantId;
+  allow create: if isAdmin()
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.granted_by == request.auth.uid;
 
-      allow delete: if isAdmin()
-        && tenantId == callerTenantId();
-    }
+  allow update: if isAdmin()
+    && resource.data.tenant_id == callerTenantId()
+    && request.resource.data.tenant_id == callerTenantId();
 
+  allow delete: if isAdmin()
+    && resource.data.tenant_id == callerTenantId();
+}
 
-    // ============================================================
-    // ORGANIZATIONAL ASSIGNMENTS
-    // ============================================================
 
-    match /organizational_assignments/{assignmentId} {
+// ============================================================
+// FIRESTORE SECURITY ACCESS INDEX
+// ============================================================
 
-      /*
-       * A member may inspect their own assignments.
-       */
-      allow read: if isAdmin()
-        || (
-          isSignedIn()
-          && resource.data.user_id == request.auth.uid
-          && resource.data.tenant_id == callerTenantId()
-        );
+match /user_access/{accessId} {
 
-      allow create, update, delete: if isAdmin()
-        && request.resource.data.tenant_id == callerTenantId();
-    }
+  allow read: if false;
 
+  allow create, update: if isAdmin()
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.user_id is string
+    && request.resource.data.permission is string
+    && request.resource.data.allowed is bool;
 
-    // ============================================================
-    // PERMISSION GRANTS
-    // ============================================================
+  allow delete: if isAdmin()
+    && resource.data.tenant_id == callerTenantId();
+}
 
-    match /permission_grants/{grantId} {
 
-      allow read: if isAdmin()
-        || (
-          isSignedIn()
-          && resource.data.user_id == request.auth.uid
-          && resource.data.tenant_id == callerTenantId()
-        );
+// ============================================================
+// CAMPAIGN ACTIVITIES
+// ============================================================
 
-      allow create: if isAdmin()
-        && request.resource.data.tenant_id == callerTenantId()
-        && request.resource.data.granted_by == request.auth.uid;
+match /campaign_activities/{activityId} {
 
-      allow update: if isAdmin()
-        && resource.data.tenant_id == callerTenantId()
-        && request.resource.data.tenant_id == callerTenantId();
+  allow read: if isAdmin()
+    && sameTenant(resource.data);
 
-      allow delete: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-    }
+  allow read: if isSignedIn()
+    && sameTenant(resource.data)
+    && hasAccess(
+      "view_activities",
+      resource.data.scope_type,
+      resource.data.scope_id
+    );
 
+  allow create: if isSignedIn()
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.created_by == request.auth.uid
+    && hasAccess(
+      "create_activity",
+      request.resource.data.scope_type,
+      request.resource.data.scope_id
+    );
 
-    // ============================================================
-    // FIRESTORE SECURITY ACCESS INDEX
-    // ============================================================
+  allow update: if isAdmin()
+    && sameTenant(resource.data)
+    && request.resource.data.tenant_id == callerTenantId();
 
-    match /user_access/{accessId} {
+  allow update: if isSignedIn()
+    && sameTenant(resource.data)
+    && request.resource.data.tenant_id == callerTenantId()
+    && hasAccess(
+      "manage_activity",
+      resource.data.scope_type,
+      resource.data.scope_id
+    );
 
-      /*
-       * The access index is never client-readable.
-       *
-       * This is deliberately restricted because it is itself
-       * security-sensitive authorization information.
-       */
-      allow read: if false;
+  allow delete: if isAdmin()
+    && sameTenant(resource.data);
 
-      /*
-       * Only administrators can maintain it.
-       */
-      allow create, update: if isAdmin()
-        && request.resource.data.tenant_id == callerTenantId()
-        && request.resource.data.user_id is string
-        && request.resource.data.permission is string
-        && request.resource.data.allowed is bool;
-
-      allow delete: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-    }
-
-
-    // ============================================================
-    // CAMPAIGN ACTIVITIES
-    // ============================================================
-
-    match /campaign_activities/{activityId} {
-
-      /*
-       * Administrators can see all activities in their tenant.
-       *
-       * Non-admin users require effective activity access.
-       */
-      allow read: if isAdmin()
-        && sameTenant(resource.data);
-
-      allow read: if isSignedIn()
-        && sameTenant(resource.data)
-        && hasAccess(
-          "view_activities",
-          resource.data.scope_type,
-          resource.data.scope_id
-        );
-
-      /*
-       * Creation must:
-       *   - belong to caller's tenant
-       *   - identify caller as creator
-       *   - use a valid scope
-       *   - grant the caller create_activity authority
-       */
-      allow create: if isSignedIn()
-        && request.resource.data.tenant_id == callerTenantId()
-        && request.resource.data.created_by == request.auth.uid
-        && hasAccess(
-          "create_activity",
-          request.resource.data.scope_type,
-          request.resource.data.scope_id
-        );
-
-      /*
-       * Admins or authorized scope managers can modify.
-       */
-      allow update: if isAdmin()
-        && sameTenant(resource.data)
-        && request.resource.data.tenant_id == callerTenantId();
-
-      allow update: if isSignedIn()
-        && sameTenant(resource.data)
-        && request.resource.data.tenant_id == callerTenantId()
-        && hasAccess(
-          "manage_activity",
-          resource.data.scope_type,
-          resource.data.scope_id
-        );
-
-      allow delete: if isAdmin()
-        && sameTenant(resource.data);
-
-      allow delete: if isSignedIn()
-        && sameTenant(resource.data)
-        && hasAccess(
-          "manage_activity",
-          resource.data.scope_type,
-          resource.data.scope_id
-        );
-    }
-
-
-    // ============================================================
-    // CAMPAIGN ASSIGNMENTS
-    // ============================================================
-
-    match /campaign_assignments/{assignmentId} {
-
-      allow read: if isAdmin()
-        || (
-          isSignedIn()
-          && resource.data.assigned_to == request.auth.uid
-          && resource.data.tenant_id == callerTenantId()
-        );
-
-      allow create, update, delete: if isAdmin()
-        && request.resource.data.tenant_id == callerTenantId();
-    }
-
-
-    // ============================================================
-    // CAMPAIGN FIELD REPORTS
-    // ============================================================
-
-    match /campaign_field_reports/{reportId} {
-
-      /*
-       * Users can always see their own reports.
-       */
-      allow read: if isSignedIn()
-        && resource.data.tenant_id == callerTenantId()
-        && resource.data.submitted_by == request.auth.uid;
-
-      /*
-       * Coordinators/reviewers can read reports for scopes
-       * they are authorized to review.
-       */
-      allow read: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-
-      allow read: if isSignedIn()
-        && resource.data.tenant_id == callerTenantId()
-        && hasAccess(
-          "review_field_report",
-          resource.data.scope_type,
-          resource.data.scope_id
-        );
-
-      /*
-       * A report must belong to the caller and the caller's
-       * authorized organizational scope.
-       */
-      allow create: if isSignedIn()
-        && request.resource.data.tenant_id == callerTenantId()
-        && request.resource.data.submitted_by == request.auth.uid
-        && request.resource.data.status == "submitted"
-        && hasAccess(
-          "submit_field_report",
-          request.resource.data.scope_type,
-          request.resource.data.scope_id
-        );
-
-      /*
-       * Review/update.
-       */
-      allow update: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-
-      allow update: if isSignedIn()
-        && resource.data.tenant_id == callerTenantId()
-        && hasAccess(
-          "review_field_report",
-          resource.data.scope_type,
-          resource.data.scope_id
-        );
-
-      allow delete: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-    }
-
-
-    // ============================================================
-    // CAMPAIGN ISSUES
-    // ============================================================
-
-    match /issues/{issueId} {
-
-      allow read: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-
-      allow read: if isSignedIn()
-        && resource.data.tenant_id == callerTenantId()
-        && resource.data.reported_by == request.auth.uid;
-
-      allow read: if isSignedIn()
-        && resource.data.tenant_id == callerTenantId()
-        && hasAccess(
-          "manage_issue",
-          resource.data.scope_type,
-          resource.data.scope_id
-        );
-
-      allow create: if isSignedIn()
-        && request.resource.data.tenant_id == callerTenantId()
-        && request.resource.data.reported_by == request.auth.uid
-        && request.resource.data.status == "reported"
-        && request.resource.data.title is string
-        && request.resource.data.description is string
-        && request.resource.data.scope_type is string
-        && request.resource.data.scope_id is string
-        && hasAccess(
-          "report_issue",
-          request.resource.data.scope_type,
-          request.resource.data.scope_id
-        );
-
-      allow update: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-
-      allow update: if isSignedIn()
-        && resource.data.tenant_id == callerTenantId()
-        && hasAccess(
-          "manage_issue",
-          resource.data.scope_type,
-          resource.data.scope_id
-        );
-
-      allow delete: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-    }
-
-
-    // ============================================================
-    // ELECTION RESULTS
-    // ============================================================
-
-    match /election_results/{resultId} {
-
-      /*
-       * Strictly block social-only members from accessing election results.
-       *
-       * Read access:
-       * - Admins & Election Officers (tenant-owned)
-       * - Authorized campaign members for their registered PU or authorized scope
-       */
-      allow read: if (isAdmin() || isElectionOfficer())
-        && resource.data.tenant_id == callerTenantId();
-
-      allow read: if isCampaignMember()
-        && resource.data.tenant_id == callerTenantId()
-        && resource.data.ward_id == callerProfile().ward_id
-        && resource.data.polling_unit_id == callerProfile().polling_unit_id;
-
-      /*
-       * One result document per PU.
-       *
-       * The deterministic document ID prevents duplicate active submissions.
-       */
-      allow create: if electionModeEnabled()
-        && (isAdmin() || isElectionOfficer() || isCampaignMember())
-        && !exists(
-          /databases/$(database)/documents/election_results/$(resultId)
-        )
-        && request.resource.data.tenant_id == callerTenantId()
-        && request.resource.data.submitted_by == request.auth.uid
-        && request.resource.data.status == "submitted"
-        && request.resource.data.verified == false
-        && resultId
-          == request.resource.data.ward_id
-             + "__"
-             + request.resource.data.polling_unit_id
-        && (
-          isAdminOrElectionOfficer()
-          ||
-          (
-            isMember()
-            && request.resource.data.ward_id
-              == callerProfile().ward_id
-            && request.resource.data.polling_unit_id
-              == callerProfile().polling_unit_id
-          )
-        );
-
-      /*
-       * Admins and Election Officers can review, approve, reject, or reopen election results.
-       */
-      allow update: if (isAdmin() || isElectionOfficer())
-        && resource.data.tenant_id == callerTenantId();
-
-      allow delete: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-    }
-
-
-    // ============================================================
-    // POLLING UNIT REPORTS & ELECTION INCIDENTS
-    // ============================================================
-
-    match /pu_reports/{reportId} {
-      allow read: if isSignedIn()
-        && resource.data.tenant_id == callerTenantId();
-
-      allow create: if isSignedIn()
-        && request.resource.data.tenant_id == callerTenantId()
-        && request.resource.data.submitted_by == request.auth.uid;
-
-      allow update, delete: if isAdmin();
-    }
-
-    match /election_incidents/{incidentId} {
-      allow read: if isSignedIn()
-        && resource.data.tenant_id == callerTenantId();
-
-      allow create: if isSignedIn()
-        && request.resource.data.tenant_id == callerTenantId()
-        && request.resource.data.reported_by == request.auth.uid;
-
-      allow update, delete: if isAdmin();
-    }
-
-
-    // ============================================================
-    // CONTACT MESSAGES
-    // ============================================================
-
-    match /contact_messages/{messageId} {
-
-      /*
-       * Anyone can submit a contact message.
-       * Creation must contain valid name, email, and message string fields.
-       */
-      allow create: if request.resource.data.name is string
-        && request.resource.data.email is string
-        && request.resource.data.message is string
-        && request.resource.data.status == "unread";
-
-      /*
-       * Only admins can view, update, or delete contact messages.
-       */
-      allow read, update, delete: if isAdmin();
-    }
-
-
-    // ============================================================
-    // TENANTS
-    // ============================================================
-
-    match /tenants/{tenantId} {
-
-      /*
-       * A tenant's public campaign information may be readable.
-       */
-      allow read: if true;
-
-      /*
-       * Tenant configuration is administrator-controlled.
-       */
-      allow create, update: if isAdmin()
-        && tenantId == callerTenantId();
-
-      allow delete: if false;
-    }
-
-
-    // ============================================================
-    // DEFAULT DENY
-    // ============================================================
-
-    match /{document=**} {
-      allow read, write: if false;
-    }
+  allow delete: if isSignedIn()
+    && sameTenant(resource.data)
+    && hasAccess(
+      "manage_activity",
+      resource.data.scope_type,
+      resource.data.scope_id
+    );
+}
+
+
+// ============================================================
+// CAMPAIGN ASSIGNMENTS
+// ============================================================
+
+match /campaign_assignments/{assignmentId} {
+
+  allow read: if isAdmin()
+    || (
+      isSignedIn()
+      && resource.data.assigned_to == request.auth.uid
+      && resource.data.tenant_id == callerTenantId()
+    );
+
+  allow create, update, delete: if isAdmin()
+    && request.resource.data.tenant_id == callerTenantId();
+}
+
+
+// ============================================================
+// CAMPAIGN FIELD REPORTS
+// ============================================================
+
+match /campaign_field_reports/{reportId} {
+
+  allow read: if isSignedIn()
+    && resource.data.tenant_id == callerTenantId()
+    && resource.data.submitted_by == request.auth.uid;
+
+  allow read: if isAdmin()
+    && resource.data.tenant_id == callerTenantId();
+
+  allow read: if isSignedIn()
+    && resource.data.tenant_id == callerTenantId()
+    && hasAccess(
+      "review_field_report",
+      resource.data.scope_type,
+      resource.data.scope_id
+    );
+
+  allow create: if isSignedIn()
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.submitted_by == request.auth.uid
+    && request.resource.data.status == "submitted"
+    && hasAccess(
+      "submit_field_report",
+      request.resource.data.scope_type,
+      request.resource.data.scope_id
+    );
+
+  allow update: if isAdmin()
+    && resource.data.tenant_id == callerTenantId();
+
+  allow update: if isSignedIn()
+    && resource.data.tenant_id == callerTenantId()
+    && hasAccess(
+      "review_field_report",
+      resource.data.scope_type,
+      resource.data.scope_id
+    );
+
+  allow delete: if isAdmin()
+    && resource.data.tenant_id == callerTenantId();
+}
+
+
+// ============================================================
+// CAMPAIGN ISSUES
+// ============================================================
+
+match /issues/{issueId} {
+
+  allow read: if isAdmin()
+    && resource.data.tenant_id == callerTenantId();
+
+  allow read: if isSignedIn()
+    && resource.data.tenant_id == callerTenantId()
+    && resource.data.reported_by == request.auth.uid;
+
+  allow read: if isSignedIn()
+    && resource.data.tenant_id == callerTenantId()
+    && hasAccess(
+      "manage_issue",
+      resource.data.scope_type,
+      resource.data.scope_id
+    );
+
+  allow create: if isSignedIn()
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.reported_by == request.auth.uid
+    && request.resource.data.status == "reported"
+    && request.resource.data.title is string
+    && request.resource.data.description is string
+    && request.resource.data.scope_type is string
+    && request.resource.data.scope_id is string
+    && hasAccess(
+      "report_issue",
+      request.resource.data.scope_type,
+      request.resource.data.scope_id
+    );
+
+  allow update: if isAdmin()
+    && resource.data.tenant_id == callerTenantId();
+
+  allow update: if isSignedIn()
+    && resource.data.tenant_id == callerTenantId()
+    && hasAccess(
+      "manage_issue",
+      resource.data.scope_type,
+      resource.data.scope_id
+    );
+
+  allow delete: if isAdmin()
+    && resource.data.tenant_id == callerTenantId();
+}
+
+
+// ============================================================
+// ELECTION RESULTS
+// ============================================================
+
+match /election_results/{resultId} {
+
+  /*
+   * READ
+   *
+   * Admin and Election Officer retain global tenant visibility.
+   *
+   * Campaign members retain access to their registered PU.
+   *
+   * Authorized organizational users can receive broader
+   * visibility through the existing user_access mechanism.
+   */
+  allow read: if canReadElectionResult(resource.data);
+
+
+  /*
+   * CREATE
+   *
+   * Campaign members may submit only for their registered PU.
+   *
+   * Election Officers/Admins may submit for any PU.
+   *
+   * Deterministic ID ensures one result document per PU.
+   */
+  allow create: if electionModeEnabled()
+    && !exists(
+      /databases/$(database)/documents/election_results/$(resultId)
+    )
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.submitted_by == request.auth.uid
+    && request.resource.data.ward_id is string
+    && request.resource.data.polling_unit_id is string
+    && request.resource.data.results is list
+    && request.resource.data.status == "submitted"
+    && request.resource.data.verified == false
+    && request.resource.data.cloudinary_url is string
+    && resultId
+      == request.resource.data.ward_id
+         + "__"
+         + request.resource.data.polling_unit_id
+    && (
+      isAdminOrElectionOfficer()
+      ||
+      registeredAt(
+        request.resource.data.ward_id,
+        request.resource.data.polling_unit_id
+      )
+    );
+
+
+  /*
+   * OFFICER REVIEW
+   *
+   * This is the ONLY route that can change election status
+   * or verified state.
+   *
+   * Admin cannot approve merely by virtue of admin access.
+   */
+  allow update: if officerReviewUpdate()
+    && validOfficerTransition();
+
+
+  /*
+   * ADMINISTRATIVE CORRECTION
+   *
+   * Admin can correct typed result values and append history.
+   *
+   * Admin cannot approve, reject, reopen, or otherwise change
+   * the workflow state through this route.
+   */
+  allow update: if adminCorrectionUpdate();
+
+
+  /*
+   * NO DELETE
+   *
+   * Election results are historical election records.
+   * Correction/review/reopen must preserve the document and
+   * its audit history.
+   */
+  allow delete: if false;
+}
+
+
+// ============================================================
+// POLLING UNIT REPORTS
+// ============================================================
+
+match /pu_reports/{reportId} {
+
+  /*
+   * Preserve existing tenant-wide read behaviour so existing
+   * Election reporting pages do not unexpectedly stop working.
+   */
+  allow read: if isSignedIn()
+    && resource.data.tenant_id == callerTenantId();
+
+  /*
+   * Any authenticated user may create only their own report.
+   *
+   * Existing behaviour is retained, while Election users are
+   * expected to submit against their registered PU.
+   */
+  allow create: if isSignedIn()
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.submitted_by == request.auth.uid;
+
+  allow update, delete: if isAdmin();
+}
+
+
+// ============================================================
+// ELECTION INCIDENTS
+// ============================================================
+
+match /election_incidents/{incidentId} {
+
+  /*
+   * Preserve existing tenant-wide read behaviour.
+   */
+  allow read: if isSignedIn()
+    && resource.data.tenant_id == callerTenantId();
+
+  allow create: if isSignedIn()
+    && request.resource.data.tenant_id == callerTenantId()
+    && request.resource.data.reported_by == request.auth.uid;
+
+  allow update, delete: if isAdmin();
+}
+
+
+// ============================================================
+// TENANTS
+// ============================================================
+
+match /tenants/{tenantId} {
+
+  allow read: if true;
+
+  allow create, update: if isAdmin()
+    && tenantId == callerTenantId();
+
+  allow delete: if false;
+}
+
+
+// ============================================================
+// CONTACT MESSAGES
+// ============================================================
+
+match /contact_messages/{messageId} {
+
+  allow create: if request.resource.data.name is string
+    && request.resource.data.email is string
+    && request.resource.data.message is string
+    && request.resource.data.status == "unread";
+
+  allow read, update, delete: if isAdmin();
+}
+
+
+
+// ============================================================
+// ELECTORAL DATA
+// ============================================================
+
+match /electoral_data/{document} {
+
+  allow read: if true;
+
+  allow write: if false;
+}
+
+
+// ============================================================
+// DEFAULT DENY
+// ============================================================
+
+match /{document=**} {
+  allow read, write: if false;
   }
+ }
 }

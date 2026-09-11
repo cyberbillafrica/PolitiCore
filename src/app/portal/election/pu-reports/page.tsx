@@ -32,6 +32,7 @@ export default function PUReportsPage() {
   const [lgas, setLgas] = useState<LGA[]>([]);
   const [reports, setReports] = useState<PUReportDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   // Form State
   const [showForm, setShowForm] = useState(false);
@@ -64,10 +65,18 @@ export default function PUReportsPage() {
   useEffect(() => {
     if (!profile?.tenant_id) return;
 
-    const unsubscribe = subscribeToPUReports(profile.tenant_id, (docs) => {
-      setReports(docs);
-      setLoading(false);
-    });
+    const unsubscribe = subscribeToPUReports(
+      profile.tenant_id,
+      (docs) => {
+        setReports(docs);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Failed to load PU reports:", err);
+        setLoadError("PU reports could not be loaded. Please try again.");
+        setLoading(false);
+      },
+    );
 
     return () => unsubscribe();
   }, [profile?.tenant_id]);
@@ -85,10 +94,21 @@ export default function PUReportsPage() {
       // Members can always view their own submitted PU reports
       return r.submitted_by === profile?.id;
     }
-    return activeAssignments.some((a) =>
-      assignmentCoversScope(a, { scope_type: "ward", scope_id: r.ward_id }, lgas) ||
-      assignmentCoversScope(a, { scope_type: "polling_unit", scope_id: r.polling_unit_id }, lgas)
-    ) || r.submitted_by === profile?.id;
+    return (
+      activeAssignments.some(
+        (a) =>
+          assignmentCoversScope(
+            a,
+            { scope_type: "ward", scope_id: r.ward_id },
+            lgas,
+          ) ||
+          assignmentCoversScope(
+            a,
+            { scope_type: "polling_unit", scope_id: r.polling_unit_id },
+            lgas,
+          ),
+      ) || r.submitted_by === profile?.id
+    );
   });
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,7 +140,9 @@ export default function PUReportsPage() {
         form.ward_id !== profile?.ward_id ||
         form.polling_unit_id !== profile?.polling_unit_id
       ) {
-        setFormError("You can only submit PU reports for your registered Ward and Polling Unit.");
+        setFormError(
+          "You can only submit PU reports for your registered Ward and Polling Unit.",
+        );
         return;
       }
     }
@@ -130,7 +152,10 @@ export default function PUReportsPage() {
       let cloudinaryUrl: string | null = null;
       if (evidenceFile) {
         try {
-          cloudinaryUrl = await uploadToCloudinary(evidenceFile, "ifeanyi-2027/news");
+          cloudinaryUrl = await uploadToCloudinary(
+            evidenceFile,
+            "ifeanyi-2027/news",
+          );
         } catch (uploadErr) {
           console.warn("Cloudinary evidence upload fallback:", uploadErr);
         }
@@ -180,9 +205,12 @@ export default function PUReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Polling Unit Reports</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Polling Unit Reports
+          </h1>
           <p className="text-sm text-gray-500">
-            Submit and inspect polling unit conduct, opening, turnout, and closing reports.
+            Submit and inspect polling unit conduct, opening, turnout, and
+            closing reports.
           </p>
         </div>
 
@@ -211,8 +239,13 @@ export default function PUReportsPage() {
         <Card className="border-apc-primary/20">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Submit Polling Unit Report</CardTitle>
-              <button onClick={() => setShowForm(false)} className="p-1 hover:bg-gray-100 rounded">
+              <CardTitle className="text-lg">
+                Submit Polling Unit Report
+              </CardTitle>
+              <button
+                onClick={() => setShowForm(false)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
                 <X className="h-5 w-5 text-gray-400" />
               </button>
             </div>
@@ -261,7 +294,11 @@ export default function PUReportsPage() {
                   <select
                     value={form.ward_id}
                     onChange={(e) =>
-                      setForm({ ...form, ward_id: e.target.value, polling_unit_id: "" })
+                      setForm({
+                        ...form,
+                        ward_id: e.target.value,
+                        polling_unit_id: "",
+                      })
                     }
                     disabled={!form.lga_id}
                     className="w-full px-3 py-2 border rounded-lg text-sm disabled:bg-gray-100"
@@ -284,13 +321,17 @@ export default function PUReportsPage() {
                   </label>
                   <select
                     value={form.polling_unit_id}
-                    onChange={(e) => setForm({ ...form, polling_unit_id: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, polling_unit_id: e.target.value })
+                    }
                     disabled={!form.ward_id}
                     className="w-full px-3 py-2 border rounded-lg text-sm disabled:bg-gray-100"
                     required
                   >
                     <option value="">
-                      {form.ward_id ? "Select polling unit" : "Select Ward first"}
+                      {form.ward_id
+                        ? "Select polling unit"
+                        : "Select Ward first"}
                     </option>
                     {pollingUnits.map((pu) => (
                       <option key={pu.id} value={pu.id}>
@@ -330,7 +371,9 @@ export default function PUReportsPage() {
                     type="text"
                     required
                     value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, title: e.target.value })
+                    }
                     placeholder="e.g. Voting started peacefully at 8:30 AM"
                     className="w-full px-3 py-2 border rounded-lg text-sm"
                   />
@@ -345,7 +388,9 @@ export default function PUReportsPage() {
                   rows={4}
                   required
                   value={form.content}
-                  onChange={(e) => setForm({ ...form, content: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, content: e.target.value })
+                  }
                   placeholder="Provide detailed observation of polling unit proceedings..."
                   className="w-full px-3 py-2 border rounded-lg text-sm"
                 />
@@ -408,15 +453,24 @@ export default function PUReportsPage() {
           <CardTitle>Reports ({filteredReports.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          {filteredReports.length === 0 ? (
+          {loadError ? (
+            <p className="py-10 text-center text-sm text-red-600">
+              {loadError}
+            </p>
+          ) : filteredReports.length === 0 ? (
             <div className="text-center py-10">
               <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No polling unit reports submitted in this scope yet.</p>
+              <p className="text-gray-500">
+                No polling unit reports submitted in this scope yet.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
               {filteredReports.map((r) => (
-                <div key={r.id} className="bg-white border rounded-xl p-5 space-y-2">
+                <div
+                  key={r.id}
+                  className="bg-white border rounded-xl p-5 space-y-2"
+                >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-apc-primary/10 text-apc-primary uppercase">
@@ -430,7 +484,9 @@ export default function PUReportsPage() {
                     </span>
                   </div>
 
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.content}</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {r.content}
+                  </p>
 
                   {r.cloudinary_url && (
                     <div className="pt-2">

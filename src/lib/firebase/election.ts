@@ -4,7 +4,6 @@ import {
   doc,
   getDocs,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -38,7 +37,13 @@ export interface ElectionPartyResult {
 export interface ElectionResultHistory {
   edited_by: string;
   edited_at: unknown;
-  action: "create" | "correct" | "review_approve" | "review_reject" | "review_clarify" | "reopen";
+  action:
+    | "create"
+    | "correct"
+    | "review_approve"
+    | "review_reject"
+    | "review_clarify"
+    | "reopen";
   old_results?: ElectionPartyResult[];
   new_results?: ElectionPartyResult[];
   old_status?: ElectionResultStatus;
@@ -97,7 +102,13 @@ export interface ElectionIncidentDoc {
   tenant_id: string;
   ward_id: string;
   polling_unit_id?: string | null;
-  incident_type: "ballot_snatching" | "violence" | "bavas_malfunction" | "late_arrival" | "vote_buying" | "other";
+  incident_type:
+    | "ballot_snatching"
+    | "violence"
+    | "bavas_malfunction"
+    | "late_arrival"
+    | "vote_buying"
+    | "other";
   severity: "low" | "medium" | "high" | "critical";
   description: string;
   reported_by: string;
@@ -121,7 +132,9 @@ export async function submitElectionResultWithEvidence(data: {
   cloudinaryPublicId?: string | null;
 }) {
   if (!data.cloudinaryUrl) {
-    throw new Error("Form EC8 photo evidence is mandatory for result submission.");
+    throw new Error(
+      "Form EC8 photo evidence is mandatory for result submission.",
+    );
   }
 
   const tenant = await getCurrentTenant();
@@ -234,7 +247,8 @@ export async function correctElectionResult(data: {
     new_results: data.newResults,
     old_status: data.existingDoc.status,
     new_status: newStatus,
-    reason: data.reason || "Administrative correction against submitted EC8 evidence",
+    reason:
+      data.reason || "Administrative correction against submitted EC8 evidence",
   };
 
   const updatedHistory = [...(data.existingDoc.history || []), historyItem];
@@ -258,7 +272,7 @@ export function subscribeToElectionResults(
   tenantId: string,
   onData: (results: ElectionResultDoc[], isInitialLoad: boolean) => void,
   onError?: (err: Error) => void,
-  scopeConstraint?: { ward_id?: string; polling_unit_id?: string }
+  scopeConstraint?: { ward_id?: string; polling_unit_id?: string },
 ): Unsubscribe {
   let q;
 
@@ -267,12 +281,12 @@ export function subscribeToElectionResults(
       collection(db, "election_results"),
       where("tenant_id", "==", tenantId),
       where("ward_id", "==", scopeConstraint.ward_id),
-      where("polling_unit_id", "==", scopeConstraint.polling_unit_id)
+      where("polling_unit_id", "==", scopeConstraint.polling_unit_id),
     );
   } else {
     q = query(
       collection(db, "election_results"),
-      where("tenant_id", "==", tenantId)
+      where("tenant_id", "==", tenantId),
     );
   }
 
@@ -292,7 +306,7 @@ export function subscribeToElectionResults(
     (err) => {
       console.error("Error in election results listener:", err);
       if (onError) onError(err);
-    }
+    },
   );
 }
 
@@ -324,12 +338,11 @@ export async function createPUReport(data: {
 export function subscribeToPUReports(
   tenantId: string,
   onData: (reports: PUReportDoc[]) => void,
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
 ): Unsubscribe {
   const q = query(
     collection(db, "pu_reports"),
     where("tenant_id", "==", tenantId),
-    orderBy("created_at", "desc")
   );
 
   return onSnapshot(
@@ -339,12 +352,18 @@ export function subscribeToPUReports(
         id: d.id,
         ...d.data(),
       })) as PUReportDoc[];
-      onData(docs);
+      onData(
+        docs.sort(
+          (first, second) =>
+            getTimestampMillis(second.created_at) -
+            getTimestampMillis(first.created_at),
+        ),
+      );
     },
     (err) => {
       console.error("Error in PU reports listener:", err);
       if (onError) onError(err);
-    }
+    },
   );
 }
 
@@ -376,12 +395,11 @@ export async function createElectionIncident(data: {
 export function subscribeToElectionIncidents(
   tenantId: string,
   onData: (incidents: ElectionIncidentDoc[]) => void,
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
 ): Unsubscribe {
   const q = query(
     collection(db, "election_incidents"),
     where("tenant_id", "==", tenantId),
-    orderBy("created_at", "desc")
   );
 
   return onSnapshot(
@@ -391,11 +409,30 @@ export function subscribeToElectionIncidents(
         id: d.id,
         ...d.data(),
       })) as ElectionIncidentDoc[];
-      onData(docs);
+      onData(
+        docs.sort(
+          (first, second) =>
+            getTimestampMillis(second.created_at) -
+            getTimestampMillis(first.created_at),
+        ),
+      );
     },
     (err) => {
       console.error("Error in election incidents listener:", err);
       if (onError) onError(err);
-    }
+    },
   );
+}
+
+function getTimestampMillis(value: unknown): number {
+  if (value && typeof value === "object" && "toMillis" in value) {
+    const toMillis = (value as { toMillis?: () => number }).toMillis;
+    if (typeof toMillis === "function") return toMillis();
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    return new Date(value).getTime();
+  }
+
+  return 0;
 }

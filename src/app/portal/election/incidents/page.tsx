@@ -31,6 +31,7 @@ export default function IncidentsPage() {
   const [lgas, setLgas] = useState<LGA[]>([]);
   const [incidents, setIncidents] = useState<ElectionIncidentDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   // Form State
   const [showForm, setShowForm] = useState(false);
@@ -63,10 +64,20 @@ export default function IncidentsPage() {
   useEffect(() => {
     if (!profile?.tenant_id) return;
 
-    const unsubscribe = subscribeToElectionIncidents(profile.tenant_id, (docs) => {
-      setIncidents(docs);
-      setLoading(false);
-    });
+    const unsubscribe = subscribeToElectionIncidents(
+      profile.tenant_id,
+      (docs) => {
+        setIncidents(docs);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Failed to load election incidents:", err);
+        setLoadError(
+          "Election incidents could not be loaded. Please try again.",
+        );
+        setLoading(false);
+      },
+    );
 
     return () => unsubscribe();
   }, [profile?.tenant_id]);
@@ -83,9 +94,15 @@ export default function IncidentsPage() {
     if (activeAssignments.length === 0) {
       return inc.reported_by === profile?.id;
     }
-    return activeAssignments.some((a) =>
-      assignmentCoversScope(a, { scope_type: "ward", scope_id: inc.ward_id }, lgas)
-    ) || inc.reported_by === profile?.id;
+    return (
+      activeAssignments.some((a) =>
+        assignmentCoversScope(
+          a,
+          { scope_type: "ward", scope_id: inc.ward_id },
+          lgas,
+        ),
+      ) || inc.reported_by === profile?.id
+    );
   });
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,7 +131,9 @@ export default function IncidentsPage() {
     // Scoping check for non-admin
     if (!isAdmin) {
       if (form.ward_id !== profile?.ward_id) {
-        setFormError("You can only report incidents within your registered Ward.");
+        setFormError(
+          "You can only report incidents within your registered Ward.",
+        );
         return;
       }
     }
@@ -124,7 +143,10 @@ export default function IncidentsPage() {
       let cloudinaryUrl: string | null = null;
       if (evidenceFile) {
         try {
-          cloudinaryUrl = await uploadToCloudinary(evidenceFile, "ifeanyi-2027/news");
+          cloudinaryUrl = await uploadToCloudinary(
+            evidenceFile,
+            "ifeanyi-2027/news",
+          );
         } catch (uploadErr) {
           console.warn("Cloudinary evidence upload fallback:", uploadErr);
         }
@@ -154,7 +176,9 @@ export default function IncidentsPage() {
       setEvidencePreview(null);
     } catch (err: any) {
       console.error("Failed to report election incident:", err);
-      setFormError(err.message || "Failed to report incident. Please try again.");
+      setFormError(
+        err.message || "Failed to report incident. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -174,9 +198,12 @@ export default function IncidentsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Election Incident Reports</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Election Incident Reports
+          </h1>
           <p className="text-sm text-gray-500">
-            Report and track irregularities, BVAS malfunctions, late arrivals, or security incidents.
+            Report and track irregularities, BVAS malfunctions, late arrivals,
+            or security incidents.
           </p>
         </div>
 
@@ -209,7 +236,10 @@ export default function IncidentsPage() {
                 <ShieldAlert className="h-5 w-5 text-red-600" />
                 Report Election Incident
               </CardTitle>
-              <button onClick={() => setShowForm(false)} className="p-1 hover:bg-gray-100 rounded">
+              <button
+                onClick={() => setShowForm(false)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
                 <X className="h-5 w-5 text-gray-400" />
               </button>
             </div>
@@ -258,7 +288,11 @@ export default function IncidentsPage() {
                   <select
                     value={form.ward_id}
                     onChange={(e) =>
-                      setForm({ ...form, ward_id: e.target.value, polling_unit_id: "" })
+                      setForm({
+                        ...form,
+                        ward_id: e.target.value,
+                        polling_unit_id: "",
+                      })
                     }
                     disabled={!form.lga_id}
                     className="w-full px-3 py-2 border rounded-lg text-sm bg-white disabled:bg-gray-100"
@@ -281,7 +315,9 @@ export default function IncidentsPage() {
                   </label>
                   <select
                     value={form.polling_unit_id}
-                    onChange={(e) => setForm({ ...form, polling_unit_id: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, polling_unit_id: e.target.value })
+                    }
                     disabled={!form.ward_id}
                     className="w-full px-3 py-2 border rounded-lg text-sm bg-white disabled:bg-gray-100"
                   >
@@ -308,11 +344,21 @@ export default function IncidentsPage() {
                     className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
                     required
                   >
-                    <option value="bavas_malfunction">BVAS / Technical Failure</option>
-                    <option value="late_arrival">Late Arrival of Materials</option>
-                    <option value="vote_buying">Vote Buying / Inducement</option>
-                    <option value="ballot_snatching">Ballot Snatching / Tampering</option>
-                    <option value="violence">Disruption / Security Concern</option>
+                    <option value="bavas_malfunction">
+                      BVAS / Technical Failure
+                    </option>
+                    <option value="late_arrival">
+                      Late Arrival of Materials
+                    </option>
+                    <option value="vote_buying">
+                      Vote Buying / Inducement
+                    </option>
+                    <option value="ballot_snatching">
+                      Ballot Snatching / Tampering
+                    </option>
+                    <option value="violence">
+                      Disruption / Security Concern
+                    </option>
                     <option value="other">Other Incident</option>
                   </select>
                 </div>
@@ -332,7 +378,9 @@ export default function IncidentsPage() {
                     <option value="low">Low — Minor Delay</option>
                     <option value="medium">Medium — Operational Concern</option>
                     <option value="high">High — Serious Disturbance</option>
-                    <option value="critical">Critical — Immediate Intervention Needed</option>
+                    <option value="critical">
+                      Critical — Immediate Intervention Needed
+                    </option>
                   </select>
                 </div>
               </div>
@@ -345,7 +393,9 @@ export default function IncidentsPage() {
                   rows={4}
                   required
                   value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, description: e.target.value })
+                  }
                   placeholder="Describe the incident in detail..."
                   className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
                 />
@@ -408,15 +458,24 @@ export default function IncidentsPage() {
           <CardTitle>Reported Incidents ({filteredIncidents.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          {filteredIncidents.length === 0 ? (
+          {loadError ? (
+            <p className="py-10 text-center text-sm text-red-600">
+              {loadError}
+            </p>
+          ) : filteredIncidents.length === 0 ? (
             <div className="text-center py-10">
               <AlertTriangle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No election incidents reported in this scope.</p>
+              <p className="text-gray-500">
+                No election incidents reported in this scope.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
               {filteredIncidents.map((inc) => (
-                <div key={inc.id} className="bg-white border rounded-xl p-5 space-y-2">
+                <div
+                  key={inc.id}
+                  className="bg-white border rounded-xl p-5 space-y-2"
+                >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span
@@ -434,11 +493,16 @@ export default function IncidentsPage() {
                     </div>
 
                     <span className="text-xs text-gray-400">
-                      Ward: {inc.ward_id} {inc.polling_unit_id ? `· PU: ${inc.polling_unit_id}` : ""}
+                      Ward: {inc.ward_id}{" "}
+                      {inc.polling_unit_id
+                        ? `· PU: ${inc.polling_unit_id}`
+                        : ""}
                     </span>
                   </div>
 
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{inc.description}</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {inc.description}
+                  </p>
 
                   {inc.cloudinary_url && (
                     <div className="pt-2">
