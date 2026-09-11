@@ -43,7 +43,11 @@ service cloud.firestore {
 
     function isAdmin() {
       return userExists()
-        && callerRole() == "admin";
+        && (
+          callerRole() == "admin"
+          || callerRole() == "tenant_super_admin"
+          || callerRole() == "platform_super_admin"
+        );
     }
 
     function isElectionOfficer() {
@@ -673,10 +677,15 @@ service cloud.firestore {
        *
        * Read access:
        * - Admins & Election Officers (tenant-owned)
-       * - Authorized campaign members for their tenant
+       * - Authorized campaign members for their registered PU or authorized scope
        */
-      allow read: if (isAdmin() || isElectionOfficer() || isCampaignMember())
+      allow read: if (isAdmin() || isElectionOfficer())
         && resource.data.tenant_id == callerTenantId();
+
+      allow read: if isCampaignMember()
+        && resource.data.tenant_id == callerTenantId()
+        && resource.data.ward_id == callerProfile().ward_id
+        && resource.data.polling_unit_id == callerProfile().polling_unit_id;
 
       /*
        * One result document per PU.

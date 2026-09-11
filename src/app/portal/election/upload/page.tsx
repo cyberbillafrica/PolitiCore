@@ -13,6 +13,8 @@ export default function ElectionUploadPage() {
   const { profile } = useAuth();
   const isAdminOrElectionOfficer =
     profile?.access_role === "admin" ||
+    profile?.access_role === "tenant_super_admin" ||
+    profile?.access_role === "platform_super_admin" ||
     profile?.access_role === "election_officer";
 
   const [lgas, setLgas] = useState<LGA[]>([]);
@@ -106,7 +108,12 @@ export default function ElectionUploadPage() {
           "ifeanyi-2027/election-results"
         );
       } catch (uploadErr: any) {
-        console.warn("Cloudinary upload fallback:", uploadErr);
+        console.error("Cloudinary upload error:", uploadErr);
+        throw new Error(uploadErr.message || "Failed to upload Form EC8 image.");
+      }
+
+      if (!cloudinaryUrl) {
+        throw new Error("Form EC8 photo upload failed. Please try again.");
       }
 
       // 2. Submit result + evidence metadata to Firestore

@@ -120,6 +120,10 @@ export async function submitElectionResultWithEvidence(data: {
   cloudinaryUrl?: string | null;
   cloudinaryPublicId?: string | null;
 }) {
+  if (!data.cloudinaryUrl) {
+    throw new Error("Form EC8 photo evidence is mandatory for result submission.");
+  }
+
   const tenant = await getCurrentTenant();
   const resultDocId = `${data.wardId}__${data.pollingUnitId}`;
   const resultRef = doc(db, "election_results", resultDocId);
@@ -218,6 +222,10 @@ export async function correctElectionResult(data: {
 }) {
   const resultRef = doc(db, "election_results", data.resultDocId);
 
+  // An Admin correction must NOT automatically approve or keep a result approved.
+  // If an approved result is edited, it must revert to 'pending_review' for Election Officer verification.
+  const newStatus: ElectionResultStatus = "pending_review";
+
   const historyItem: ElectionResultHistory = {
     edited_by: data.adminUserId,
     edited_at: new Date().toISOString(),
@@ -225,7 +233,7 @@ export async function correctElectionResult(data: {
     old_results: data.existingDoc.results,
     new_results: data.newResults,
     old_status: data.existingDoc.status,
-    new_status: data.existingDoc.status,
+    new_status: newStatus,
     reason: data.reason || "Administrative correction against submitted EC8 evidence",
   };
 
@@ -233,6 +241,8 @@ export async function correctElectionResult(data: {
 
   await updateDoc(resultRef, {
     results: data.newResults,
+    status: newStatus,
+    verified: false,
     history: updatedHistory,
     updated_at: serverTimestamp(),
   });
@@ -247,12 +257,24 @@ export async function correctElectionResult(data: {
 export function subscribeToElectionResults(
   tenantId: string,
   onData: (results: ElectionResultDoc[], isInitialLoad: boolean) => void,
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
+  scopeConstraint?: { ward_id?: string; polling_unit_id?: string }
 ): Unsubscribe {
-  const q = query(
-    collection(db, "election_results"),
-    where("tenant_id", "==", tenantId)
-  );
+  let q;
+
+  if (scopeConstraint?.ward_id && scopeConstraint?.polling_unit_id) {
+    q = query(
+      collection(db, "election_results"),
+      where("tenant_id", "==", tenantId),
+      where("ward_id", "==", scopeConstraint.ward_id),
+      where("polling_unit_id", "==", scopeConstraint.polling_unit_id)
+    );
+  } else {
+    q = query(
+      collection(db, "election_results"),
+      where("tenant_id", "==", tenantId)
+    );
+  }
 
   let isFirstSnapshot = true;
 
