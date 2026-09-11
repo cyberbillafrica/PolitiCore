@@ -208,7 +208,7 @@ export default function DocumentationPage() {
                     <li>ifeanyi-2027/news</li>
                     <li>ifeanyi-2027/gallery</li>
                     <li>ifeanyi-2027/candidate</li>
-                    <li>ifeanyi-2027/campaign-members</li>
+                    <li>ifeanyi-2027/election-results</li>
                   </ul>
                 </div>
 

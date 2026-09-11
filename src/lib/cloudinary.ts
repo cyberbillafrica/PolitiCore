@@ -5,7 +5,7 @@
  * - News: "ifeanyi-2027/news"
  * - Gallery: "ifeanyi-2027/gallery"
  * - Candidate: "ifeanyi-2027/candidate"
- * - Campaign Members: "ifeanyi-2027/campaign-members"
+ * - Election Results: "ifeanyi-2027/election-results"
  * - Manifestos: "ifeanyi-2027/candidate/{tenantId}/manifestos" (inside candidate)
  */
 
@@ -19,7 +19,6 @@ export type CloudinaryFolder =
   | "ifeanyi-2027/news"
   | "ifeanyi-2027/gallery"
   | "ifeanyi-2027/candidate"
-  | "ifeanyi-2027/campaign-members"
   | "ifeanyi-2027/election-results";
 
 // ─────────────────────────────────────────────
@@ -28,11 +27,13 @@ export type CloudinaryFolder =
 
 export async function uploadToCloudinary(
   file: File,
-  folder: CloudinaryFolder = "ifeanyi-2027/news"
+  folder: CloudinaryFolder = "ifeanyi-2027/news",
 ): Promise<string> {
   const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
   if (!allowedTypes.includes(file.type)) {
-    throw new Error("Invalid file type. Only JPG, PNG, and WebP images are allowed.");
+    throw new Error(
+      "Invalid file type. Only JPG, PNG, and WebP images are allowed.",
+    );
   }
 
   const maxSize = 5 * 1024 * 1024; // 5 MB
@@ -55,7 +56,8 @@ export async function uploadToCloudinary(
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(
-      errorData.error?.message || `Cloudinary upload failed with status ${response.status}`
+      errorData.error?.message ||
+        `Cloudinary upload failed with status ${response.status}`,
     );
   }
 
@@ -77,7 +79,7 @@ export async function uploadToCloudinary(
  */
 export async function uploadPDFToCloudinary(
   file: File,
-  folder: string = "ifeanyi-2027/candidate"
+  folder: string = "ifeanyi-2027/candidate",
 ): Promise<string> {
   // Validate file type
   if (file.type !== "application/pdf") {
@@ -94,7 +96,7 @@ export async function uploadPDFToCloudinary(
   formData.append("file", file);
   formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
   formData.append("folder", folder);
-  
+
   // IMPORTANT: Tell Cloudinary this is a raw file (not an image)
   formData.append("resource_type", "raw");
 
@@ -108,7 +110,8 @@ export async function uploadPDFToCloudinary(
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(
-      errorData.error?.message || `Cloudinary upload failed with status ${response.status}`
+      errorData.error?.message ||
+        `Cloudinary upload failed with status ${response.status}`,
     );
   }
 
