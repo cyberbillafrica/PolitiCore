@@ -185,6 +185,14 @@ const navigation: NavItem[] = [
         name: "Election Dashboard",
         href: "/portal/election",
         icon: LayoutDashboard,
+        adminOnly: false,
+        electionModeRequired: true,
+      },
+
+      {
+        name: "Officer Operations Desk",
+        href: "/portal/election/operations",
+        icon: CheckSquare,
         adminOnly: true,
         electionModeRequired: true,
       },
@@ -482,9 +490,18 @@ export default function PortalLayout({
         }
 
         if ("group" in item && item.group === "election") {
+          // Strictly block social-only members from seeing Election Operations
+          if (!isCampaignMember && !isAdmin && !isElectionOfficer) {
+            return null;
+          }
+
           const visibleChildren = item.children.filter((child) => {
-            if ("adminOnly" in child && child.adminOnly) {
-              return canViewElectionDashboard;
+            if (child.href === "/portal/election") {
+              return isCampaignMember || isAdmin || isElectionOfficer;
+            }
+
+            if (child.href === "/portal/election/operations") {
+              return isAdmin || isElectionOfficer;
             }
 
             if ("electionReporting" in child && child.electionReporting) {

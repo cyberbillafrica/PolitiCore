@@ -95,39 +95,41 @@ export default function ElectionDashboard() {
       setLoading(false);
 
       if (!isInitialLoad && docs.length > 0) {
-        // Detect newly arrived results for toast alert
+        // Detect newly arrived results that are approved for toast alert
         const newest = docs[docs.length - 1];
 
-        // Resolve names for toast
-        let puName = newest.polling_unit_id;
-        let wardName = newest.ward_id;
-        let lgaName = "Enugu";
+        if (newest.status === "approved") {
+          // Resolve names for toast
+          let puName = newest.polling_unit_id;
+          let wardName = newest.ward_id;
+          let lgaName = "Enugu";
 
-        for (const lga of lgas) {
-          for (const ward of lga.wards) {
-            const pu = ward.pollingUnits.find((p) => p.id === newest.polling_unit_id);
-            if (pu) {
-              puName = `${pu.code} — ${pu.name}`;
-              wardName = `${ward.code} — ${ward.name}`;
-              lgaName = lga.name;
+          for (const lga of lgas) {
+            for (const ward of lga.wards) {
+              const pu = ward.pollingUnits.find((p) => p.id === newest.polling_unit_id);
+              if (pu) {
+                puName = `${pu.code} — ${pu.name}`;
+                wardName = `${ward.code} — ${ward.name}`;
+                lgaName = lga.name;
+              }
             }
           }
+
+          const alert: AlertToast = {
+            id: `${newest.id}_${Date.now()}`,
+            puName,
+            wardName,
+            lgaName,
+            results: newest.results,
+          };
+
+          setToastAlerts((prev) => [...prev, alert]);
+
+          // Auto-dismiss alert after 6 seconds
+          setTimeout(() => {
+            setToastAlerts((prev) => prev.filter((a) => a.id !== alert.id));
+          }, 6000);
         }
-
-        const alert: AlertToast = {
-          id: `${newest.id}_${Date.now()}`,
-          puName,
-          wardName,
-          lgaName,
-          results: newest.results,
-        };
-
-        setToastAlerts((prev) => [...prev, alert]);
-
-        // Auto-dismiss alert after 6 seconds
-        setTimeout(() => {
-          setToastAlerts((prev) => prev.filter((a) => a.id !== alert.id));
-        }, 6000);
       }
     });
 
@@ -157,9 +159,12 @@ export default function ElectionDashboard() {
     });
   }, [isAdmin, assignments, results, lgas]);
 
-  // Apply UI Dropdown Filters
+  // Apply Status (Only Approved count in official dashboard) and UI Dropdown Filters
   const filteredResults = useMemo(() => {
     return coveredResults.filter((r) => {
+      // Official aggregation requires approved status
+      if (r.status !== "approved") return false;
+
       if (selectedLgaId !== "all") {
         const lga = lgas.find((l) => l.id === selectedLgaId);
         if (lga && !lga.wards.some((w) => w.id === r.ward_id)) {

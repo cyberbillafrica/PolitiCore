@@ -98,12 +98,12 @@ export default function ElectionUploadPage() {
 
     setSubmitting(true);
     try {
-      // 1. Upload Form EC8 image to Cloudinary
+      // 1. Upload Form EC8 image to Cloudinary (folder: "ifeanyi-2027/election-results")
       let cloudinaryUrl: string | null = null;
       try {
         cloudinaryUrl = await uploadToCloudinary(
           evidenceFile,
-          "ifeanyi-2027/news"
+          "ifeanyi-2027/election-results"
         );
       } catch (uploadErr: any) {
         console.warn("Cloudinary upload fallback:", uploadErr);
