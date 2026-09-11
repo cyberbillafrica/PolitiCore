@@ -22,6 +22,14 @@ import { getCurrentTenant } from "./tenants";
  * ============================================================
  */
 
+export type ElectionResultStatus =
+  | "submitted"
+  | "pending_review"
+  | "approved"
+  | "rejected"
+  | "clarification_required"
+  | "reopened";
+
 export interface ElectionPartyResult {
   party: string;
   votes: number;
@@ -30,8 +38,12 @@ export interface ElectionPartyResult {
 export interface ElectionResultHistory {
   edited_by: string;
   edited_at: unknown;
-  old_results: ElectionPartyResult[];
-  new_results: ElectionPartyResult[];
+  action: "create" | "correct" | "review_approve" | "review_reject" | "review_clarify" | "reopen";
+  old_results?: ElectionPartyResult[];
+  new_results?: ElectionPartyResult[];
+  old_status?: ElectionResultStatus;
+  new_status?: ElectionResultStatus;
+  notes?: string;
   reason?: string;
 }
 
@@ -42,6 +54,10 @@ export interface ElectionResultDoc {
   polling_unit_id: string;
   results: ElectionPartyResult[];
   submitted_by: string;
+  status: ElectionResultStatus;
+  review_notes?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: unknown;
   verified: boolean;
   cloudinary_url?: string | null;
   cloudinary_public_id?: string | null;
@@ -108,17 +124,81 @@ export async function submitElectionResultWithEvidence(data: {
   const resultDocId = `${data.wardId}__${data.pollingUnitId}`;
   const resultRef = doc(db, "election_results", resultDocId);
 
+  const initialHistory: ElectionResultHistory = {
+    edited_by: data.userId,
+    edited_at: new Date().toISOString(),
+    action: "create",
+    new_results: data.results,
+    new_status: "submitted",
+    notes: "Initial result submission with Form EC8 evidence",
+  };
+
   await setDoc(resultRef, {
     tenant_id: tenant.id,
     ward_id: data.wardId,
     polling_unit_id: data.pollingUnitId,
     results: data.results,
     submitted_by: data.userId,
+    status: "submitted",
     verified: false,
     cloudinary_url: data.cloudinaryUrl || null,
     cloudinary_public_id: data.cloudinaryPublicId || null,
-    history: [],
+    history: [initialHistory],
     created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  });
+}
+
+/*
+ * ============================================================
+ * ELECTION OFFICER REVIEW & ACTION (APPROVE / REJECT / CLARIFY / REOPEN)
+ * ============================================================
+ */
+
+export async function reviewElectionResult(data: {
+  resultDocId: string;
+  officerUserId: string;
+  action: "approve" | "reject" | "clarify" | "reopen";
+  notes?: string;
+  existingDoc: ElectionResultDoc;
+}) {
+  const resultRef = doc(db, "election_results", data.resultDocId);
+
+  let newStatus: ElectionResultStatus = "pending_review";
+  let historyAction: ElectionResultHistory["action"] = "review_approve";
+
+  if (data.action === "approve") {
+    newStatus = "approved";
+    historyAction = "review_approve";
+  } else if (data.action === "reject") {
+    newStatus = "rejected";
+    historyAction = "review_reject";
+  } else if (data.action === "clarify") {
+    newStatus = "clarification_required";
+    historyAction = "review_clarify";
+  } else if (data.action === "reopen") {
+    newStatus = "reopened";
+    historyAction = "reopen";
+  }
+
+  const historyItem: ElectionResultHistory = {
+    edited_by: data.officerUserId,
+    edited_at: new Date().toISOString(),
+    action: historyAction,
+    old_status: data.existingDoc.status,
+    new_status: newStatus,
+    notes: data.notes || `Result marked as ${newStatus}`,
+  };
+
+  const updatedHistory = [...(data.existingDoc.history || []), historyItem];
+
+  await updateDoc(resultRef, {
+    status: newStatus,
+    verified: newStatus === "approved",
+    reviewed_by: data.officerUserId,
+    review_notes: data.notes || null,
+    reviewed_at: serverTimestamp(),
+    history: updatedHistory,
     updated_at: serverTimestamp(),
   });
 }
@@ -141,8 +221,11 @@ export async function correctElectionResult(data: {
   const historyItem: ElectionResultHistory = {
     edited_by: data.adminUserId,
     edited_at: new Date().toISOString(),
+    action: "correct",
     old_results: data.existingDoc.results,
     new_results: data.newResults,
+    old_status: data.existingDoc.status,
+    new_status: data.existingDoc.status,
     reason: data.reason || "Administrative correction against submitted EC8 evidence",
   };
 
@@ -150,7 +233,6 @@ export async function correctElectionResult(data: {
 
   await updateDoc(resultRef, {
     results: data.newResults,
-    verified: true,
     history: updatedHistory,
     updated_at: serverTimestamp(),
   });

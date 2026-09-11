@@ -669,31 +669,28 @@ service cloud.firestore {
     match /election_results/{resultId} {
 
       /*
-       * Election records are tenant-owned.
+       * Strictly block social-only members from accessing election results.
        *
-       * Read access: Admin OR Election Officer OR signed-in user belonging to same tenant.
+       * Read access:
+       * - Admins & Election Officers (tenant-owned)
+       * - Authorized campaign members for their tenant
        */
-      allow read: if isAdmin()
-        && resource.data.tenant_id == callerTenantId();
-
-      allow read: if isElectionOfficer()
-        && resource.data.tenant_id == callerTenantId();
-
-      allow read: if isSignedIn()
+      allow read: if (isAdmin() || isElectionOfficer() || isCampaignMember())
         && resource.data.tenant_id == callerTenantId();
 
       /*
        * One result document per PU.
        *
-       * The deterministic document ID prevents a second submission.
+       * The deterministic document ID prevents duplicate active submissions.
        */
       allow create: if electionModeEnabled()
-        && isSignedIn()
+        && (isAdmin() || isElectionOfficer() || isCampaignMember())
         && !exists(
           /databases/$(database)/documents/election_results/$(resultId)
         )
         && request.resource.data.tenant_id == callerTenantId()
         && request.resource.data.submitted_by == request.auth.uid
+        && request.resource.data.status == "submitted"
         && request.resource.data.verified == false
         && resultId
           == request.resource.data.ward_id
@@ -712,9 +709,9 @@ service cloud.firestore {
         );
 
       /*
-       * Only administrators can verify/change election results.
+       * Admins and Election Officers can review, approve, reject, or reopen election results.
        */
-      allow update: if isAdmin()
+      allow update: if (isAdmin() || isElectionOfficer())
         && resource.data.tenant_id == callerTenantId();
 
       allow delete: if isAdmin()
