@@ -308,7 +308,10 @@ export default function PortalLayout({
 
   const role = profile?.access_role ?? null;
 
-  const isAdmin = role === "admin";
+  const isAdmin =
+    role === "admin" ||
+    role === "tenant_super_admin" ||
+    role === "platform_super_admin";
 
   const isElectionOfficer = role === "election_officer";
 

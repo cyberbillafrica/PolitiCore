@@ -86,55 +86,77 @@ export default function ElectionDashboard() {
     initLgas();
   }, []);
 
+  // Determine query scope constraints for Firestore security rules
+  const scopeConstraint = useMemo(() => {
+    if (isAdmin || profile?.access_role === "election_officer") {
+      return undefined;
+    }
+    if (profile?.ward_id && profile?.polling_unit_id) {
+      return {
+        ward_id: profile.ward_id,
+        polling_unit_id: profile.polling_unit_id,
+      };
+    }
+    return undefined;
+  }, [isAdmin, profile]);
+
   // Real-time Firestore Listener
   useEffect(() => {
     if (!tenantId) return;
 
-    const unsubscribe = subscribeToElectionResults(tenantId, (docs, isInitialLoad) => {
-      setResults(docs);
-      setLoading(false);
+    const unsubscribe = subscribeToElectionResults(
+      tenantId,
+      (docs, isInitialLoad) => {
+        setResults(docs);
+        setLoading(false);
 
-      if (!isInitialLoad && docs.length > 0) {
-        // Detect newly arrived results that are approved for toast alert
-        const newest = docs[docs.length - 1];
+        if (!isInitialLoad && docs.length > 0) {
+          // Detect newly arrived results that are approved for toast alert
+          const newest = docs[docs.length - 1];
 
-        if (newest.status === "approved") {
-          // Resolve names for toast
-          let puName = newest.polling_unit_id;
-          let wardName = newest.ward_id;
-          let lgaName = "Enugu";
+          if (newest.status === "approved") {
+            // Resolve names for toast
+            let puName = newest.polling_unit_id;
+            let wardName = newest.ward_id;
+            let lgaName = "Enugu";
 
-          for (const lga of lgas) {
-            for (const ward of lga.wards) {
-              const pu = ward.pollingUnits.find((p) => p.id === newest.polling_unit_id);
-              if (pu) {
-                puName = `${pu.code} — ${pu.name}`;
-                wardName = `${ward.code} — ${ward.name}`;
-                lgaName = lga.name;
+            for (const lga of lgas) {
+              for (const ward of lga.wards) {
+                const pu = ward.pollingUnits.find((p) => p.id === newest.polling_unit_id);
+                if (pu) {
+                  puName = `${pu.code} — ${pu.name}`;
+                  wardName = `${ward.code} — ${ward.name}`;
+                  lgaName = lga.name;
+                }
               }
             }
+
+            const alert: AlertToast = {
+              id: `${newest.id}_${Date.now()}`,
+              puName,
+              wardName,
+              lgaName,
+              results: newest.results,
+            };
+
+            setToastAlerts((prev) => [...prev, alert]);
+
+            // Auto-dismiss alert after 6 seconds
+            setTimeout(() => {
+              setToastAlerts((prev) => prev.filter((a) => a.id !== alert.id));
+            }, 6000);
           }
-
-          const alert: AlertToast = {
-            id: `${newest.id}_${Date.now()}`,
-            puName,
-            wardName,
-            lgaName,
-            results: newest.results,
-          };
-
-          setToastAlerts((prev) => [...prev, alert]);
-
-          // Auto-dismiss alert after 6 seconds
-          setTimeout(() => {
-            setToastAlerts((prev) => prev.filter((a) => a.id !== alert.id));
-          }, 6000);
         }
-      }
-    });
+      },
+      (err) => {
+        console.error("Error subscribing to election results:", err);
+        setLoading(false);
+      },
+      scopeConstraint
+    );
 
     return () => unsubscribe();
-  }, [tenantId, lgas]);
+  }, [tenantId, lgas, scopeConstraint]);
 
   // Hierarchical Result Filtering based on User's Scope
   const coveredResults = useMemo(() => {
