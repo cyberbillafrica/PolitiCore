@@ -173,12 +173,14 @@ export async function getScopedCampaignMembers(
       const chunk = coveredWardIds.slice(i, i + chunkSize);
       const wardQ = query(
         collection(db, "users"),
-        where("membership_types", "array-contains", "campaign_member"),
         where("ward_id", "in", chunk)
       );
       const wardSnap = await getDocs(wardQ);
       wardSnap.docs.forEach((d) => {
-        membersMap.set(d.id, { id: d.id, ...d.data() } as ScopedCampaignMember);
+        const data = d.data();
+        if (data.membership_types?.includes("campaign_member")) {
+          membersMap.set(d.id, { id: d.id, ...data } as ScopedCampaignMember);
+        }
       });
     }
 
