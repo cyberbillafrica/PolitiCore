@@ -17,24 +17,24 @@ import {
   XCircle,
 } from "lucide-react";
 
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
-  addDoc,
-} from "firebase/firestore";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { useAuth } from "@/contexts/AuthContext";
 
 import { db } from "@/lib/firebase/config";
+
+import {
+  createOrganizationalAssignment,
+  deleteOrganizationalAssignment,
+  updateOrganizationalAssignment,
+} from "@/lib/firebase/organizationalAssignments";
+
+import {
+  createPermissionGrant,
+  deletePermissionGrant,
+} from "@/lib/firebase/permissionGrants";
 
 import type {
   OrganizationalAssignment,
@@ -71,6 +71,14 @@ import type {
  *
  *   "What explicit exception/additional permission has been
  *    granted or denied?"
+ *
+ * ALL MUTATIONS go through the service functions in
+ * organizationalAssignments.ts and permissionGrants.ts.
+ *
+ * Those functions are responsible for keeping the user_access
+ * security index in sync. This page MUST NOT write to Firestore
+ * directly, otherwise the security index drifts and non-admin
+ * users silently lose access.
  *
  * Firestore security rules remain the real security boundary.
  * ============================================================
@@ -341,7 +349,7 @@ export default function CampaignCoordinationPage() {
 
   /*
    * ------------------------------------------------------------
-   * CREATE ASSIGNMENT
+   * CREATE / UPDATE ASSIGNMENT
    * ------------------------------------------------------------
    */
 
@@ -375,15 +383,13 @@ export default function CampaignCoordinationPage() {
       setError(null);
 
       if (editingAssignmentId) {
-        await updateDoc(doc(db, "organizational_assignments", editingAssignmentId), {
-          user_id: selectedUserId,
+        await updateOrganizationalAssignment(editingAssignmentId, {
           position: selectedPosition,
           scope_type: selectedScopeType,
           scope_id: selectedScopeId.trim(),
-          updated_at: serverTimestamp(),
         });
       } else {
-        await addDoc(collection(db, "organizational_assignments"), {
+        await createOrganizationalAssignment({
           tenant_id: profile.tenant_id ?? "",
           user_id: selectedUserId,
           position: selectedPosition,
@@ -391,9 +397,6 @@ export default function CampaignCoordinationPage() {
           scope_id: selectedScopeId.trim(),
           status: "active",
           assigned_by: profile.id,
-          assigned_at: serverTimestamp(),
-          created_at: serverTimestamp(),
-          updated_at: serverTimestamp(),
         });
       }
 
@@ -414,17 +417,20 @@ export default function CampaignCoordinationPage() {
 
   /*
    * ------------------------------------------------------------
-   * TOGGLE ASSIGNMENT
+   * TOGGLE ASSIGNMENT STATUS
    * ------------------------------------------------------------
+   *
+   * Delegates to updateOrganizationalAssignment so that the
+   * user_access index is added or removed consistently with
+   * the assignment status change.
    */
 
   async function toggleAssignment(assignment: OrganizationalAssignment) {
     try {
       const nextStatus = assignment.status === "active" ? "inactive" : "active";
 
-      await updateDoc(doc(db, "organizational_assignments", assignment.id), {
+      await updateOrganizationalAssignment(assignment.id, {
         status: nextStatus,
-        updated_at: serverTimestamp(),
       });
 
       await loadData();
@@ -443,7 +449,7 @@ export default function CampaignCoordinationPage() {
 
   async function removeAssignment(assignmentId: string) {
     try {
-      await deleteDoc(doc(db, "organizational_assignments", assignmentId));
+      await deleteOrganizationalAssignment(assignmentId);
 
       await loadData();
     } catch (err) {
@@ -457,6 +463,9 @@ export default function CampaignCoordinationPage() {
    * ------------------------------------------------------------
    * CREATE PERMISSION GRANT
    * ------------------------------------------------------------
+   *
+   * Delegates to createPermissionGrant so that the user_access
+   * index is written alongside the grant.
    */
 
   async function createGrant() {
@@ -471,7 +480,7 @@ export default function CampaignCoordinationPage() {
       setCreatingGrant(true);
       setError(null);
 
-      await addDoc(collection(db, "permission_grants"), {
+      await createPermissionGrant({
         tenant_id: profile.tenant_id ?? "",
         user_id: grantUserId,
         permission: grantPermission,
@@ -480,8 +489,6 @@ export default function CampaignCoordinationPage() {
         scope_id:
           grantScopeType && grantScopeId.trim() ? grantScopeId.trim() : null,
         granted_by: profile.id,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp(),
       });
 
       setGrantUserId("");
@@ -502,11 +509,14 @@ export default function CampaignCoordinationPage() {
    * ------------------------------------------------------------
    * DELETE GRANT
    * ------------------------------------------------------------
+   *
+   * Delegates to deletePermissionGrant so the user_access index
+   * entry is removed cleanly.
    */
 
   async function removeGrant(grantId: string) {
     try {
-      await deleteDoc(doc(db, "permission_grants", grantId));
+      await deletePermissionGrant(grantId);
 
       await loadData();
     } catch (err) {
@@ -658,6 +668,7 @@ export default function CampaignCoordinationPage() {
 
           <p className="text-sm text-gray-500">
             Assign a campaign member to a position and organizational scope.
+            This writes the assignment and updates the security index.
           </p>
         </CardHeader>
 
@@ -839,7 +850,9 @@ export default function CampaignCoordinationPage() {
                             type="button"
                             onClick={() => startEditAssignment(assignment)}
                             className="rounded-lg border border-blue-200 p-2 text-blue-600 hover:bg-blue-50"
-                            aria-label={`Edit assignment for ${memberName(assignment.user_id)}`}
+                            aria-label={`Edit assignment for ${memberName(
+                              assignment.user_id,
+                            )}`}
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -858,7 +871,9 @@ export default function CampaignCoordinationPage() {
                             type="button"
                             onClick={() => removeAssignment(assignment.id)}
                             className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
-                            aria-label={`Delete assignment for ${memberName(assignment.user_id)}`}
+                            aria-label={`Delete assignment for ${memberName(
+                              assignment.user_id,
+                            )}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -882,8 +897,8 @@ export default function CampaignCoordinationPage() {
           <CardTitle className="text-xl">Explicit Permission Grants</CardTitle>
 
           <p className="text-sm text-gray-500">
-            Grant or deny a specific capability independently of the member's
-            organizational position.
+            Grant or deny a specific capability independently of the
+            member&apos;s organizational position.
           </p>
         </CardHeader>
 

@@ -1,5 +1,6 @@
 import type {
   OrganizationalAssignment,
+  OrganizationalPosition,
   Permission,
   PermissionGrant,
   ScopeType,
@@ -21,32 +22,171 @@ export interface PermissionContext {
   lgasData?: LGA[];
 }
 
-/**
- * Returns the user's active organizational assignments.
+/*
+ * ============================================================
+ * DEFAULT PERMISSIONS PER ORGANIZATIONAL POSITION
+ * ============================================================
+ *
+ * Single source of truth for what each organizational position
+ * grants.
+ *
+ * Consumed by:
+ *   1. hasPermission() in this file
+ *   2. writeAssignmentIndex() in organizationalAssignments.ts
+ *   3. writeUserAccessIndex() in permissionGrants.ts
+ *
+ * campaign_manager and council_chairman intentionally grant no
+ * permissions here. Those positions imply administrative authority
+ * and should use access_role: "admin" on the user profile instead
+ * of an organizational assignment.
  */
+
+export const POSITION_DEFAULT_PERMISSIONS: Record<
+  OrganizationalPosition,
+  Permission[]
+> = {
+  campaign_member: [
+    "view_dashboard",
+    "view_area",
+    "view_assignments",
+    "view_activities",
+    "create_activity",
+    "submit_field_report",
+    "report_issue",
+    "view_notices",
+    "view_documents",
+  ],
+
+  ward_coordinator: [
+    "view_dashboard",
+    "view_area",
+    "view_members",
+    "view_member_contacts",
+    "view_assignments",
+    "create_assignment",
+    "assign_task",
+    "review_assignment",
+    "view_activities",
+    "create_activity",
+    "manage_activity",
+    "view_activity_reports",
+    "submit_field_report",
+    "review_field_report",
+    "report_issue",
+    "manage_issue",
+    "view_notices",
+    "send_notice",
+    "view_documents",
+    "manage_documents",
+    "view_analytics",
+  ],
+
+  lga_coordinator: [
+    "view_dashboard",
+    "view_area",
+    "view_members",
+    "view_member_contacts",
+    "view_assignments",
+    "create_assignment",
+    "assign_task",
+    "review_assignment",
+    "view_activities",
+    "create_activity",
+    "manage_activity",
+    "view_activity_reports",
+    "submit_field_report",
+    "review_field_report",
+    "report_issue",
+    "manage_issue",
+    "view_notices",
+    "send_notice",
+    "view_documents",
+    "manage_documents",
+    "view_analytics",
+  ],
+
+  zone_coordinator: [
+    "view_dashboard",
+    "view_area",
+    "view_members",
+    "view_member_contacts",
+    "view_assignments",
+    "create_assignment",
+    "assign_task",
+    "review_assignment",
+    "view_activities",
+    "create_activity",
+    "manage_activity",
+    "view_activity_reports",
+    "submit_field_report",
+    "review_field_report",
+    "report_issue",
+    "manage_issue",
+    "view_notices",
+    "send_notice",
+    "view_documents",
+    "manage_documents",
+    "view_analytics",
+  ],
+
+  state_coordinator: [
+    "view_dashboard",
+    "view_area",
+    "view_members",
+    "view_member_contacts",
+    "manage_members",
+    "view_assignments",
+    "create_assignment",
+    "assign_task",
+    "review_assignment",
+    "view_activities",
+    "create_activity",
+    "manage_activity",
+    "view_activity_reports",
+    "submit_field_report",
+    "review_field_report",
+    "report_issue",
+    "manage_issue",
+    "view_notices",
+    "send_notice",
+    "view_documents",
+    "manage_documents",
+    "view_analytics",
+    "manage_organization",
+    "manage_permissions",
+  ],
+
+  campaign_manager: [],
+
+  council_chairman: [],
+};
+
+/*
+ * ============================================================
+ * ACTIVE ASSIGNMENTS
+ * ============================================================
+ */
+
 export function getActiveAssignments(
   assignments: OrganizationalAssignment[],
 ): OrganizationalAssignment[] {
   return assignments.filter((assignment) => assignment.status === "active");
 }
 
-/**
- * Returns true when the user has an active campaign membership.
+/*
+ * ============================================================
+ * MEMBERSHIP PREDICATES
+ * ============================================================
  */
+
 export function isCampaignMember(profile: UserProfile | null): boolean {
   return profile?.membership_types?.includes("campaign_member") ?? false;
 }
 
-/**
- * Returns true when the user has social membership.
- */
 export function isSocialMember(profile: UserProfile | null): boolean {
   return profile?.membership_types?.includes("social_member") ?? false;
 }
 
-/**
- * Returns true when an account carries administrative system privilege.
- */
 export function isAdminUser(profile: UserProfile | null): boolean {
   if (!profile) return false;
 
@@ -57,16 +197,16 @@ export function isAdminUser(profile: UserProfile | null): boolean {
   );
 }
 
-/**
- * Returns true when an admin account also carries a campaign membership.
- */
 export function isCampaignMemberAdmin(profile: UserProfile | null): boolean {
   return isAdminUser(profile) && isCampaignMember(profile);
 }
 
-/**
- * Returns campaign organizational assignments.
+/*
+ * ============================================================
+ * CAMPAIGN ASSIGNMENTS
+ * ============================================================
  */
+
 export function getCampaignAssignments(
   assignments: OrganizationalAssignment[],
 ): OrganizationalAssignment[] {
@@ -82,9 +222,6 @@ export function getCampaignAssignments(
   );
 }
 
-/**
- * Find whether the user has a particular organizational position.
- */
 export function hasPosition(
   assignments: OrganizationalAssignment[],
   position: OrganizationalAssignment["position"],
@@ -94,18 +231,20 @@ export function hasPosition(
   );
 }
 
-/**
- * Centralized Electoral Hierarchy Resolver
- *
- * Checks whether targetScope falls within the descendant hierarchy of sourceScope.
+/*
+ * ============================================================
+ * HIERARCHY RESOLVER
+ * ============================================================
  *
  * Hierarchy:
- * State ("state", "enugu-state") / Campaign ("campaign")
- *   └── Senatorial Zone ("senatorial_zone", e.g. "enugu-east-senatorial-zone")
- *         └── LGA ("lga", e.g. "nkanu-west")
- *               └── Ward ("ward", e.g. "nkanu-west-ward-01")
- *                     └── Polling Unit ("polling_unit", e.g. "nkanu-west-ward-01-pu-001")
+ *
+ *   State ("state", "enugu-state") / Campaign ("campaign")
+ *     └── Senatorial Zone ("senatorial_zone")
+ *           └── LGA ("lga")
+ *                 └── Ward ("ward")
+ *                       └── Polling Unit ("polling_unit")
  */
+
 export function isScopeDescendant(
   sourceScope: PermissionScope,
   targetScope: PermissionScope,
@@ -118,7 +257,7 @@ export function isScopeDescendant(
   const targetType = targetScope.scope_type;
   const targetId = targetScope.scope_id;
 
-  // 1. Campaign & State level covers everything in the state
+  // 1. Campaign & State cover everything in the state
   if (sourceType === "campaign" || sourceType === "state") {
     return true;
   }
@@ -128,16 +267,22 @@ export function isScopeDescendant(
     if (targetType === "senatorial_zone") {
       return sourceId === targetId;
     }
-    // All LGAs/Wards/PUs in current scope default under Enugu State / Zone if unspecified or matched
     return true;
   }
 
-  // Helper to get LGAs list (use parameter or static fallback)
-  const lgasList = lgasData && lgasData.length > 0
-    ? lgasData
-    : [{ id: "nkanu-west", code: "NW", name: "Nkanu West", wards: nkanuWestElectoralData }];
+  const lgasList =
+    lgasData && lgasData.length > 0
+      ? lgasData
+      : [
+          {
+            id: "nkanu-west",
+            code: "NW",
+            name: "Nkanu West",
+            wards: nkanuWestElectoralData,
+          },
+        ];
 
-  // 3. LGA Level
+  // 3. LGA
   if (sourceType === "lga") {
     if (targetType === "lga") {
       return sourceId === targetId;
@@ -146,11 +291,11 @@ export function isScopeDescendant(
     if (!sourceId) return false;
 
     const matchedLga = lgasList.find(
-      (lga) => lga.id === sourceId || lga.id.toLowerCase() === sourceId.toLowerCase()
+      (lga) =>
+        lga.id === sourceId || lga.id.toLowerCase() === sourceId.toLowerCase(),
     );
 
     if (!matchedLga) {
-      // Fallback matching by ID prefix (e.g. "nkanu-west" matches "nkanu-west-ward-01")
       if (targetId && targetId.startsWith(sourceId)) {
         return true;
       }
@@ -163,14 +308,14 @@ export function isScopeDescendant(
 
     if (targetType === "polling_unit") {
       return matchedLga.wards.some((w) =>
-        w.pollingUnits.some((pu) => pu.id === targetId)
+        w.pollingUnits.some((pu) => pu.id === targetId),
       );
     }
 
     return false;
   }
 
-  // 4. Ward Level
+  // 4. Ward
   if (sourceType === "ward") {
     if (targetType === "ward") {
       return sourceId === targetId;
@@ -186,14 +331,13 @@ export function isScopeDescendant(
         }
       }
 
-      // Fallback prefix check (e.g. "nkanu-west-ward-01" matches "nkanu-west-ward-01-pu-001")
       return targetId.startsWith(sourceId);
     }
 
     return false;
   }
 
-  // 5. Polling Unit Level
+  // 5. Polling Unit
   if (sourceType === "polling_unit") {
     return targetType === "polling_unit" && sourceId === targetId;
   }
@@ -201,10 +345,6 @@ export function isScopeDescendant(
   return false;
 }
 
-/**
- * Determine whether an assignment covers a requested target scope,
- * including hierarchical inheritance (e.g., LGA assignment covering Wards & PUs).
- */
 export function assignmentCoversScope(
   assignment: OrganizationalAssignment,
   scope?: PermissionScope,
@@ -219,7 +359,6 @@ export function assignmentCoversScope(
     scope_id: assignment.scope_id,
   };
 
-  // Direct exact match
   if (
     assignment.scope_type === scope.scope_type &&
     assignment.scope_id === scope.scope_id
@@ -227,14 +366,15 @@ export function assignmentCoversScope(
     return true;
   }
 
-  // Hierarchical descendant check
   return isScopeDescendant(assignmentScope, scope, lgasData);
 }
 
-/**
- * Check an explicit permission grant.
- * Explicit denial wins over explicit grant.
+/*
+ * ============================================================
+ * EXPLICIT GRANTS
+ * ============================================================
  */
+
 function hasExplicitGrant(
   grants: PermissionGrant[],
   permission: Permission,
@@ -260,9 +400,12 @@ function hasExplicitGrant(
   return null;
 }
 
-/**
- * Default permissions attached to organizational positions.
+/*
+ * ============================================================
+ * POSITION DEFAULT CHECK
+ * ============================================================
  */
+
 function positionHasPermission(
   assignments: OrganizationalAssignment[],
   permission: Permission,
@@ -276,95 +419,30 @@ function positionHasPermission(
       return false;
     }
 
-    switch (assignment.position) {
-      case "campaign_member":
-        return [
-          "view_dashboard",
-          "view_area",
-          "view_assignments",
-          "assign_task",
-          "view_activities",
-          "create_activity",
-          "submit_field_report",
-          "report_issue",
-          "view_notices",
-          "view_documents",
-        ].includes(permission);
+    const permitted = POSITION_DEFAULT_PERMISSIONS[assignment.position] ?? [];
 
-      case "ward_coordinator":
-      case "lga_coordinator":
-      case "zone_coordinator":
-        return [
-          "view_dashboard",
-          "view_area",
-          "view_members",
-          "view_member_contacts",
-          "view_assignments",
-          "create_assignment",
-          "assign_task",
-          "review_assignment",
-          "view_activities",
-          "create_activity",
-          "manage_activity",
-          "view_activity_reports",
-          "submit_field_report",
-          "review_field_report",
-          "report_issue",
-          "manage_issue",
-          "view_notices",
-          "send_notice",
-          "view_documents",
-          "manage_documents",
-          "view_analytics",
-        ].includes(permission);
-
-      case "state_coordinator":
-        return [
-          "view_dashboard",
-          "view_area",
-          "view_members",
-          "view_member_contacts",
-          "manage_members",
-          "view_assignments",
-          "create_assignment",
-          "assign_task",
-          "review_assignment",
-          "view_activities",
-          "create_activity",
-          "manage_activity",
-          "view_activity_reports",
-          "submit_field_report",
-          "review_field_report",
-          "report_issue",
-          "manage_issue",
-          "view_notices",
-          "send_notice",
-          "view_documents",
-          "manage_documents",
-          "view_analytics",
-          "manage_organization",
-          "manage_permissions",
-        ].includes(permission);
-
-      case "campaign_manager":
-      case "council_chairman":
-        return true;
-
-      default:
-        return false;
-    }
+    return permitted.includes(permission);
   });
 }
 
-/**
- * Central permission resolver.
+/*
+ * ============================================================
+ * CENTRAL PERMISSION RESOLVER
+ * ============================================================
  *
  * Rules:
- * 1. System Admin users have complete administrative authority globally
- *    WITHOUT requiring an OrganizationalAssignment.
- * 2. Non-admin users are scoped according to their OrganizationalAssignments
- *    and hierarchical electoral boundaries.
+ *
+ * 1. Admin users (access_role "admin" / "tenant_super_admin" /
+ *    "platform_super_admin") have complete administrative
+ *    authority globally, without requiring an OrganizationalAssignment.
+ *
+ * 2. Election officers have a fixed election-only permission set.
+ *
+ * 3. Explicit grants/denials in PermissionGrant are evaluated next.
+ *
+ * 4. Position defaults are evaluated last.
  */
+
 export function hasPermission(
   context: PermissionContext,
   permission: Permission,
@@ -374,46 +452,34 @@ export function hasPermission(
 
   if (!profile) return false;
 
-  /*
-   * ADMIN GLOBAL AUTHORITY RULE:
-   * Authenticated admins possess global administrative access without
-   * needing an OrganizationalAssignment.
-   */
   if (isAdminUser(profile)) {
     return true;
   }
 
-  /*
-   * Election Officer
-   */
   if (profile.access_role === "election_officer") {
     return [
       "view_dashboard",
       "submit_election_pu_report",
       "submit_election_incident",
       "upload_election_result",
+      "view_election_dashboard",
     ].includes(permission);
   }
 
-  /*
-   * Explicit grants/denials
-   */
   const explicit = hasExplicitGrant(grants, permission, scope, lgasData);
-
   if (explicit !== null) {
     return explicit;
   }
 
-  /*
-   * Position defaults with hierarchical scope checking
-   */
   return positionHasPermission(assignments, permission, scope, lgasData);
 }
 
-/**
- * Useful shortcut for determining whether the user has
- * any active campaign organizational assignment (or is Admin).
+/*
+ * ============================================================
+ * CAMPAIGN COUNCIL MEMBER
+ * ============================================================
  */
+
 export function isCampaignCouncilMember(
   profile: UserProfile | null,
   assignments: OrganizationalAssignment[],
