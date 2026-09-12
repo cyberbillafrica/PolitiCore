@@ -13,12 +13,15 @@ import {
 
 import { db } from "./config";
 import { CURRENT_TENANT_ID } from "./tenants";
+import { getAllLGAs } from "@/lib/constants";
+import { expandAssignmentToScopes } from "@/lib/organization";
 
 import type {
   CampaignActivity,
   CampaignActivityStatus,
   CampaignActivityType,
   OrganizationalAssignment,
+  LGA,
 } from "@/types";
 
 /*
@@ -125,10 +128,8 @@ export async function getAllCampaignActivities(): Promise<CampaignActivity[]> {
 
 export async function getCampaignActivitiesForAssignments(
   assignments: OrganizationalAssignment[],
+  lgasData?: LGA[],
 ): Promise<CampaignActivity[]> {
-  /*
-   * Only active assignments provide organizational access.
-   */
   const activeAssignments = assignments.filter(
     (assignment) => assignment.status === "active",
   );
@@ -137,62 +138,31 @@ export async function getCampaignActivitiesForAssignments(
     return [];
   }
 
+  const lgas = lgasData || (await getAllLGAs());
   const activityCollection = collection(db, "campaign_activities");
-
-  /*
-   * Map prevents duplicate activities when multiple assignments
-   * happen to resolve to the same organizational scope.
-   */
   const results = new Map<string, CampaignActivity>();
 
-  /*
-   * ==========================================================
-   * BUILD UNIQUE AUTHORIZED SCOPES
-   * ==========================================================
-   */
+  // Expand each active assignment to its full set of descendant scopes
+  const allScopesMap = new Map<string, { scope_type: string; scope_id: string }>();
+  for (const a of activeAssignments) {
+    const expanded = expandAssignmentToScopes(a, lgas);
+    for (const item of expanded) {
+      const key = `${item.scope_type}:${item.scope_id}`;
+      if (!allScopesMap.has(key)) {
+        allScopesMap.set(key, item);
+      }
+    }
+  }
 
-  const uniqueScopes = Array.from(
-    new Map(
-      activeAssignments.map((assignment) => [
-        `${assignment.scope_type}:${assignment.scope_id}`,
-        {
-          scope_type: assignment.scope_type,
-          scope_id: assignment.scope_id,
-        },
-      ]),
-    ).values(),
-  );
-
-  /*
-   * ==========================================================
-   * QUERY EACH AUTHORIZED SCOPE
-   * ==========================================================
-   *
-   * Firestore cannot perform our organizational authorization
-   * expansion automatically, so each exact authorized scope
-   * is queried separately.
-   */
+  const uniqueScopes = Array.from(allScopesMap.values());
 
   await Promise.all(
     uniqueScopes.map(async ({ scope_type, scope_id }) => {
       const q = query(
         activityCollection,
-
-        /*
-         * Always restrict to the current tenant.
-         */
         where("tenant_id", "==", CURRENT_TENANT_ID),
-
-        /*
-         * Restrict to the user's authorized organizational scope.
-         */
         where("scope_type", "==", scope_type),
-
         where("scope_id", "==", scope_id),
-
-        /*
-         * Display activities chronologically.
-         */
         orderBy("date", "asc"),
       );
 
@@ -206,17 +176,6 @@ export async function getCampaignActivitiesForAssignments(
       });
     }),
   );
-
-  /*
-   * ==========================================================
-   * FINAL SORT
-   * ==========================================================
-   *
-   * Date is the primary sort.
-   *
-   * start_time provides a secondary ordering for activities
-   * happening on the same date.
-   */
 
   return Array.from(results.values()).sort((a, b) => {
     const dateA = `${a.date} ${a.start_time ?? ""}`;

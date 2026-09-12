@@ -1294,7 +1294,7 @@ function PermissionGrantManager({
   onClose: () => void;
 }) {
   const [permission, setPermission] = useState<Permission>("view_dashboard");
-  const [scopeType, setScopeType] = useState<ScopeType | "">("");
+  const [scopeType, setScopeType] = useState<ScopeType | "" | "__none__">("");
   const [scopeId, setScopeId] = useState<string>("");
 
   const permissions: Permission[] = [
@@ -1311,10 +1311,11 @@ function PermissionGrantManager({
   ];
 
   const handleSubmit = async () => {
+    const finalScopeType = scopeType === "__none__" ? null : (scopeType || null);
     await onSave({
       permission,
-      scope_type: scopeType || null,
-      scope_id: scopeId || null,
+      scope_type: finalScopeType,
+      scope_id: finalScopeType ? (scopeId || null) : null,
     });
   };
 
@@ -1344,9 +1345,9 @@ function PermissionGrantManager({
       <div className="grid gap-2">
         <Label>Scope Type (optional)</Label>
         <Select
-          value={scopeType}
+          value={scopeType || "__none__"}
           onValueChange={(v) => {
-            setScopeType(v as ScopeType | "");
+            setScopeType(v === "__none__" ? "" : (v as ScopeType));
             setScopeId("");
           }}
         >
@@ -1354,7 +1355,7 @@ function PermissionGrantManager({
             <SelectValue placeholder="No scope restriction" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">No scope restriction</SelectItem>
+            <SelectItem value="__none__">No scope restriction</SelectItem>
             <SelectItem value="ward">Ward</SelectItem>
             <SelectItem value="lga">LGA</SelectItem>
             <SelectItem value="senatorial_zone">Senatorial Zone</SelectItem>
