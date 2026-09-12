@@ -72,6 +72,7 @@ export default function ElectionDashboard() {
   const [allParties, setAllParties] = useState<PoliticalParty[]>([]);
   const [results, setResults] = useState<ElectionResultDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listenerError, setListenerError] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState("ifeanyi-4-nkanu");
 
   // Selection states
@@ -201,6 +202,7 @@ export default function ElectionDashboard() {
       },
       (err) => {
         console.error("Error subscribing to election results:", err);
+        setListenerError("Live data stream disconnected. Please refresh the page to retry.");
         setLoading(false);
       },
       scopeConstraint
@@ -447,6 +449,21 @@ export default function ElectionDashboard() {
           </div>
         ))}
       </div>
+
+      {listenerError && (
+        <div className="p-4 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl flex items-center justify-between text-xs font-semibold">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            <span>{listenerError}</span>
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-3 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 font-bold"
+          >
+            Refresh Page
+          </button>
+        </div>
+      )}
 
       {/* Contest Selector & Specs Header (Spec Section 40) */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
