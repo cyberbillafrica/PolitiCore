@@ -477,3 +477,106 @@ export interface PortalContentData {
   items: PortalContent[];
   updated_at?: unknown;
 }
+
+// ============================================================
+// ELECTORAL ENGINE CORE TYPES (POLITICORE SPECIFICATION)
+// ============================================================
+
+export type ContestType =
+  | "presidential"
+  | "governorship"
+  | "senatorial"
+  | "federal_house"
+  | "state_house";
+
+export type ContestScopeType =
+  | "national"
+  | "state"
+  | "senatorial_zone"
+  | "federal_constituency"
+  | "state_constituency";
+
+export type ElectionCycleStatus =
+  | "DRAFT"
+  | "SCHEDULED"
+  | "ACTIVE"
+  | "PAUSED"
+  | "CLOSED"
+  | "ARCHIVED";
+
+export type ContestStatus = "DRAFT" | "OPEN" | "PAUSED" | "CLOSED";
+
+export type CollationStatus =
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "PAUSED";
+
+export interface ElectionCycle {
+  id: string;
+  tenant_id: string;
+  name: string;
+  year: number;
+  description?: string;
+  status: ElectionCycleStatus;
+  start_date?: string;
+  end_date?: string;
+  created_by: string;
+  created_at?: unknown;
+  updated_at?: unknown;
+}
+
+export interface ElectionContest {
+  id: string;
+  tenant_id: string;
+  election_cycle_id: string;
+  contest_type: ContestType;
+  name: string;
+  scope_type: ContestScopeType;
+  scope_id: string;
+  state_id?: string;
+  senatorial_zone_id?: string;
+  lga_ids?: string[];
+  election_date?: string;
+  status: ContestStatus;
+  collation_status: CollationStatus;
+  tracked_parties: string[];
+  participating_parties?: string[];
+  focus_party_id?: string;
+  created_by: string;
+  created_at?: unknown;
+  updated_at?: unknown;
+}
+
+export interface PoliticalParty {
+  id: string;
+  acronym: string;
+  name: string;
+  logo_url?: string | null;
+  inec_registered: boolean;
+  status: "active" | "inactive";
+  color?: string;
+  created_at?: unknown;
+  updated_at?: unknown;
+}
+
+export interface ElectionCandidate {
+  id: string;
+  tenant_id: string;
+  contest_id: string;
+  party_id: string;
+  candidate_name: string;
+  running_mate_name?: string;
+  status: "active" | "disqualified" | "withdrawn";
+  created_at?: unknown;
+  updated_at?: unknown;
+}
+
+export interface ElectionSettings {
+  id?: string;
+  tenant_id: string;
+  active_election_cycle_id: string | null;
+  active_contest_id: string | null;
+  updated_by?: string;
+  updated_at?: unknown;
+}

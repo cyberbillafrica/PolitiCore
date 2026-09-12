@@ -57,15 +57,20 @@ export default function AdminSettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Shield className="h-5 w-5 text-apc-primary" />
-              <span>Access Control</span>
+              <span>Electoral Engine Management</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-600">
-              Manage admin and election officer roles. This section will allow you to assign roles to existing members.
+              Manage election cycles, contests, INEC party masters, candidate configurations, and active collation contexts.
             </p>
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg text-sm text-gray-500">
-              Role management interface coming soon.
+            <div className="mt-4">
+              <a
+                href="/portal/admin/election"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-apc-primary text-white text-xs font-bold rounded-lg hover:bg-apc-dark transition-colors"
+              >
+                Open Admin Election Configurator &rarr;
+              </a>
             </div>
           </CardContent>
         </Card>

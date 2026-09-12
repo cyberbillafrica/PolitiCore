@@ -2,12 +2,30 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { submitElectionResultWithEvidence } from "@/lib/firebase/election";
+import {
+  submitElectionResultWithEvidence,
+  getElectionCycles,
+  getContestsByCycle,
+  getPoliticalParties,
+  getElectionSettings,
+} from "@/lib/firebase/election";
 import { uploadToCloudinary } from "@/lib/cloudinary";
-import { parties } from "@/lib/utils";
 import { getAllLGAs } from "@/lib/constants";
-import type { LGA } from "@/types";
-import { Upload, Loader2, CheckCircle2, AlertCircle, FileText } from "lucide-react";
+import type {
+  LGA,
+  ElectionCycle,
+  ElectionContest,
+  PoliticalParty,
+} from "@/types";
+import {
+  Upload,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  Vote,
+  ShieldAlert,
+} from "lucide-react";
 
 export default function ElectionUploadPage() {
   const { profile } = useAuth();
@@ -18,14 +36,12 @@ export default function ElectionUploadPage() {
     profile?.access_role === "election_officer";
 
   const [lgas, setLgas] = useState<LGA[]>([]);
+  const [cycles, setCycles] = useState<ElectionCycle[]>([]);
+  const [contests, setContests] = useState<ElectionContest[]>([]);
+  const [allParties, setAllParties] = useState<PoliticalParty[]>([]);
 
-  useEffect(() => {
-    async function loadLgas() {
-      const data = await getAllLGAs();
-      setLgas(data);
-    }
-    loadLgas();
-  }, []);
+  const [selectedCycleId, setSelectedCycleId] = useState<string>("");
+  const [selectedContestId, setSelectedContestId] = useState<string>("");
 
   const [form, setForm] = useState({
     lga_id: profile?.lga_id ?? "nkanu-west",
@@ -33,8 +49,10 @@ export default function ElectionUploadPage() {
     polling_unit_id: isAdminOrElectionOfficer
       ? ""
       : (profile?.polling_unit_id ?? ""),
-    results: parties.map((p) => ({ party: p.id, votes: 0 })),
   });
+
+  // Dynamic party vote entries based on active contest configuration
+  const [partyVotes, setPartyVotes] = useState<Record<string, number>>({});
 
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [evidencePreview, setEvidencePreview] = useState<string | null>(null);
@@ -42,6 +60,73 @@ export default function ElectionUploadPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [loadingConfig, setLoadingConfig] = useState(true);
+
+  // Load LGAs, Cycles, Contests, Parties & Active Settings
+  useEffect(() => {
+    async function initData() {
+      try {
+        const lgaData = await getAllLGAs();
+        setLgas(lgaData);
+
+        const loadedSettings = await getElectionSettings();
+        const loadedCycles = await getElectionCycles();
+        setCycles(loadedCycles);
+
+        const defaultCycleId =
+          loadedSettings?.active_election_cycle_id ||
+          loadedCycles[0]?.id ||
+          "general-election-2027";
+        setSelectedCycleId(defaultCycleId);
+
+        const loadedContests = await getContestsByCycle(defaultCycleId);
+        setContests(loadedContests);
+
+        const activeContestId =
+          loadedSettings?.active_contest_id || loadedContests[0]?.id || "";
+        setSelectedContestId(activeContestId);
+
+        const loadedParties = await getPoliticalParties();
+        setAllParties(loadedParties);
+      } catch (err) {
+        console.error("Failed to load upload configuration:", err);
+      } finally {
+        setLoadingConfig(false);
+      }
+    }
+    initData();
+  }, []);
+
+  // Update contests when cycle changes
+  useEffect(() => {
+    if (!selectedCycleId) return;
+    getContestsByCycle(selectedCycleId).then((cList) => {
+      setContests(cList);
+      if (cList.length > 0 && !cList.some((c) => c.id === selectedContestId)) {
+        setSelectedContestId(cList[0].id);
+      }
+    });
+  }, [selectedCycleId]);
+
+  // Selected Contest Details & Tracked Parties
+  const currentContest = contests.find((c) => c.id === selectedContestId);
+  const currentCycle = cycles.find((c) => c.id === selectedCycleId);
+
+  const trackedPartyObjects = (currentContest?.tracked_parties || ["apc", "pdp", "lp", "apga", "adc"])
+    .map((pid) => {
+      const pObj = allParties.find((p) => p.id === pid.toLowerCase() || p.acronym.toLowerCase() === pid.toLowerCase());
+      return pObj || { id: pid, acronym: pid.toUpperCase(), name: pid.toUpperCase(), inec_registered: true, status: "active" as const };
+    });
+
+  // Reset/Initialize party vote object when contest changes
+  useEffect(() => {
+    if (!currentContest) return;
+    const initialVotes: Record<string, number> = {};
+    for (const p of trackedPartyObjects) {
+      initialVotes[p.id] = 0;
+    }
+    setPartyVotes(initialVotes);
+  }, [selectedContestId, currentContest]);
 
   const selectedLga = lgas.find((lga) => lga.id === form.lga_id);
   const wards = selectedLga?.wards ?? [];
@@ -69,6 +154,11 @@ export default function ElectionUploadPage() {
     setError("");
     setMessage("");
 
+    if (!selectedContestId || !currentContest) {
+      setError("Active Election Contest is required.");
+      return;
+    }
+
     if (!form.ward_id || !form.polling_unit_id) {
       setError("Ward and polling unit are required.");
       return;
@@ -79,7 +169,7 @@ export default function ElectionUploadPage() {
       return;
     }
 
-    // Non‑privileged users can only submit for their own registered ward/PU
+    // Non-privileged users can only submit for their own registered ward/PU
     if (!isAdminOrElectionOfficer) {
       if (
         form.ward_id !== profile?.ward_id ||
@@ -92,9 +182,13 @@ export default function ElectionUploadPage() {
       }
     }
 
-    const nonZeroResults = form.results.filter((r) => r.votes > 0);
-    if (nonZeroResults.length === 0) {
-      setError("Please enter at least one party vote.");
+    // Format party vote payload
+    const formattedResults = Object.entries(partyVotes)
+      .map(([party, votes]) => ({ party, votes: Number(votes) || 0 }))
+      .filter((r) => r.votes > 0);
+
+    if (formattedResults.length === 0) {
+      setError("Please enter at least one valid non-zero party vote count.");
       return;
     }
 
@@ -116,17 +210,27 @@ export default function ElectionUploadPage() {
         throw new Error("Form EC8 photo upload failed. Please try again.");
       }
 
-      // 2. Submit result + evidence metadata to Firestore
+      // 2. Submit contest-aware result + evidence metadata to Firestore
       await submitElectionResultWithEvidence({
-        pollingUnitId: form.polling_unit_id,
+        electionCycleId: selectedCycleId,
+        contestId: selectedContestId,
+        contestType: currentContest.contest_type,
+        contestScope: {
+          scope_type: currentContest.scope_type,
+          scope_id: currentContest.scope_id,
+        },
+        lgaId: form.lga_id,
         wardId: form.ward_id,
-        results: nonZeroResults,
+        pollingUnitId: form.polling_unit_id,
+        stateId: currentContest.state_id || "enugu-state",
+        senatorialZoneId: currentContest.senatorial_zone_id || null,
+        results: formattedResults,
         userId: profile?.id || "unknown",
         cloudinaryUrl,
       });
 
       setMessage(
-        "Election results and Form EC8 evidence submitted successfully! They will be aggregated in real time.",
+        `Results for ${currentContest.name} & Form EC8 evidence submitted successfully! They enter the Election Officer review queue.`
       );
       setEvidenceFile(null);
       setEvidencePreview(null);
@@ -138,44 +242,122 @@ export default function ElectionUploadPage() {
     }
   };
 
+  if (loadingConfig) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-3">
+        <Loader2 className="h-8 w-8 animate-spin text-apc-primary" />
+        <p className="text-sm text-gray-500">Loading Election Configuration...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pb-12">
-      <h1 className="text-2xl font-bold text-gray-900">
-        Upload Election Results
-      </h1>
+    <div className="max-w-3xl mx-auto space-y-6 pb-12">
+      <div>
+        <div className="flex items-center gap-2 text-apc-primary font-semibold text-xs tracking-wide uppercase mb-1">
+          <Vote className="w-4 h-4" />
+          <span>ELECTION OPERATIONS DESK</span>
+        </div>
+        <h1 className="text-2xl font-bold text-gray-900">
+          Upload Polling Unit Result & Form EC8 Evidence
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Submit official polling-unit result sheets for active election contests.
+        </p>
+      </div>
+
+      {/* Prominent Election & Contest Header Specs (Sec 20 Requirement) */}
+      <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-md space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-700 pb-3">
+          <div>
+            <span className="text-xs uppercase text-slate-400 block">
+              Election Cycle
+            </span>
+            <span className="font-bold text-base text-white">
+              {currentCycle?.name || "2027 General Election"}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-xs uppercase text-slate-400 block">
+              Active Contest
+            </span>
+            <span className="font-bold text-base text-apc-light">
+              {currentContest?.name || "Select Contest"}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-xs uppercase text-slate-400 block">
+              Scope / Constituency
+            </span>
+            <span className="font-mono text-xs bg-slate-800 px-2.5 py-1 rounded text-emerald-400">
+              {currentContest?.scope_type}: {currentContest?.scope_id}
+            </span>
+          </div>
+        </div>
+
+        {/* Contest Switchers */}
+        <div className="grid sm:grid-cols-2 gap-4 text-xs pt-1">
+          <div>
+            <label className="text-slate-300 block mb-1">Select Election Cycle:</label>
+            <select
+              value={selectedCycleId}
+              onChange={(e) => setSelectedCycleId(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white font-medium"
+            >
+              {cycles.map((cy) => (
+                <option key={cy.id} value={cy.id}>
+                  {cy.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-slate-300 block mb-1">
+              Select Open Contest:
+            </label>
+            <select
+              value={selectedContestId}
+              onChange={(e) => setSelectedContestId(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-white font-medium"
+            >
+              {contests.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.contest_type}) — [{c.status}]
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
 
       {!isAdminOrElectionOfficer && (
-        <div className="p-4 bg-apc-light text-apc-primary rounded-lg border border-apc-primary/20">
-          <p className="font-medium">Your Reporting Area</p>
-          <p className="mt-1">
+        <div className="p-4 bg-apc-light text-apc-primary rounded-xl border border-apc-primary/20 text-xs space-y-1">
+          <p className="font-bold text-sm">Your Registered Polling Unit Scope</p>
+          <p>
             <span className="font-semibold">LGA:</span>{" "}
-            {memberLga ? memberLga.name : "Not set"}
-          </p>
-          <p>
+            {memberLga ? memberLga.name : "Not set"} |{" "}
             <span className="font-semibold">Ward:</span>{" "}
-            {memberWard ? `${memberWard.code} — ${memberWard.name}` : "Not set"}
-          </p>
-          <p>
+            {memberWard ? `${memberWard.code} — ${memberWard.name}` : "Not set"} |{" "}
             <span className="font-semibold">Polling Unit:</span>{" "}
             {memberPollingUnit
               ? `${memberPollingUnit.code} — ${memberPollingUnit.name}`
               : "Not set"}
-          </p>
-          <p className="text-sm mt-2 text-gray-600">
-            You can only submit results for this area.
           </p>
         </div>
       )}
 
       <form
         onSubmit={handleSubmit}
-        className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 space-y-6"
+        className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8 space-y-6"
       >
-        {/* LGA, Ward and Polling Unit – admin/election officer selection */}
-        {isAdminOrElectionOfficer && (
-          <div className="grid md:grid-cols-3 gap-6">
+        {/* Geographic Location Selection */}
+        {isAdminOrElectionOfficer ? (
+          <div className="grid md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                 LGA *
               </label>
               <select
@@ -188,7 +370,7 @@ export default function ElectionUploadPage() {
                     polling_unit_id: "",
                   })
                 }
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent text-sm"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary text-xs"
                 required
               >
                 <option value="">Select LGA</option>
@@ -201,7 +383,7 @@ export default function ElectionUploadPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                 Ward *
               </label>
               <select
@@ -214,7 +396,7 @@ export default function ElectionUploadPage() {
                   })
                 }
                 disabled={!form.lga_id}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary disabled:bg-gray-100 text-xs"
                 required
               >
                 <option value="">
@@ -229,7 +411,7 @@ export default function ElectionUploadPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                 Polling Unit *
               </label>
               <select
@@ -238,7 +420,7 @@ export default function ElectionUploadPage() {
                   setForm({ ...form, polling_unit_id: e.target.value })
                 }
                 disabled={!form.ward_id}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary disabled:bg-gray-100 text-xs"
                 required
               >
                 <option value="">
@@ -252,20 +434,45 @@ export default function ElectionUploadPage() {
               </select>
             </div>
           </div>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Ward
+              </label>
+              <input
+                type="text"
+                readOnly
+                value={memberWard ? `${memberWard.code} — ${memberWard.name}` : form.ward_id}
+                className="w-full px-3 py-2 border bg-gray-50 rounded-lg text-xs font-medium"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Polling Unit
+              </label>
+              <input
+                type="text"
+                readOnly
+                value={memberPollingUnit ? `${memberPollingUnit.code} — ${memberPollingUnit.name}` : form.polling_unit_id}
+                className="w-full px-3 py-2 border bg-gray-50 rounded-lg text-xs font-medium"
+              />
+            </div>
+          </div>
         )}
 
         {/* Form EC8 Evidence Photo Upload */}
         <div className="border-t pt-6">
           <label className="block text-sm font-semibold text-gray-900 mb-1">
-            Form EC8 / Official Result Sheet Photo *
+            Official Form EC8 Result Sheet Evidence Photo *
           </label>
           <p className="text-xs text-gray-500 mb-3">
-            Upload a clear photo of the signed Form EC8 result sheet for this polling unit.
+            Upload a clear photo of the signed Form EC8 result document for this polling unit.
           </p>
 
           <div className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-6 bg-gray-50 hover:bg-gray-100/50 transition-colors">
             {evidencePreview ? (
-              <div className="relative w-full aspect-video rounded-lg overflow-hidden border mb-3">
+              <div className="relative w-full aspect-video rounded-lg overflow-hidden border mb-3 bg-slate-900">
                 <img
                   src={evidencePreview}
                   alt="Form EC8 Result Sheet"
@@ -286,27 +493,34 @@ export default function ElectionUploadPage() {
           </div>
         </div>
 
-        {/* Party votes */}
+        {/* Dynamic Party Vote Inputs (Spec Section 21) */}
         <div className="border-t pt-6">
-          <h3 className="text-lg font-semibold text-apc-primary mb-4">
-            Enter Votes per Party
-          </h3>
-          <div className="space-y-4">
-            {parties.map((party, idx) => (
-              <div key={party.id}>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {party.name} ({party.id.toUpperCase()}) Votes
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-bold text-apc-primary">
+              Party Vote Input Fields ({trackedPartyObjects.length} Tracked Parties)
+            </h3>
+            <span className="text-xs text-gray-500">
+              Dynamically loaded from Contest Config
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {trackedPartyObjects.map((party) => (
+              <div key={party.id} className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                <label className="block text-xs font-bold text-gray-800 uppercase mb-1">
+                  {party.acronym} — {party.name}
                 </label>
                 <input
                   type="number"
                   min="0"
-                  value={form.results[idx].votes}
-                  onChange={(e) => {
-                    const newResults = [...form.results];
-                    newResults[idx].votes = parseInt(e.target.value) || 0;
-                    setForm({ ...form, results: newResults });
-                  }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary focus:border-transparent text-sm"
+                  value={partyVotes[party.id] ?? 0}
+                  onChange={(e) =>
+                    setPartyVotes({
+                      ...partyVotes,
+                      [party.id]: parseInt(e.target.value) || 0,
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary text-sm font-mono font-bold"
                   placeholder="0"
                 />
               </div>
@@ -315,14 +529,14 @@ export default function ElectionUploadPage() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200 text-sm">
+          <div className="flex items-center gap-2 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200 text-xs font-medium">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {message && (
-          <div className="flex items-center gap-2 p-4 bg-green-50 text-green-700 rounded-lg border border-green-200 text-sm">
+          <div className="flex items-center gap-2 p-4 bg-green-50 text-green-700 rounded-lg border border-green-200 text-xs font-medium">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             <span>{message}</span>
           </div>
@@ -331,17 +545,17 @@ export default function ElectionUploadPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full bg-apc-primary text-white py-3 rounded-lg font-semibold hover:bg-apc-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full bg-apc-primary text-white py-3 rounded-xl font-bold hover:bg-apc-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
         >
           {submitting ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Uploading Evidence & Results...</span>
+              <span>Uploading Form EC8 & Registering Submission...</span>
             </>
           ) : (
             <>
               <FileText className="h-4 w-4" />
-              <span>Submit Election Results</span>
+              <span>Submit Contest Polling Unit Result</span>
             </>
           )}
         </button>

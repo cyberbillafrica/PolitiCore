@@ -26,6 +26,10 @@ import {
   History,
   Loader2,
   Lock,
+  Vote,
+  Layers,
+  ArrowRightLeft,
+  Filter,
 } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,17 +38,21 @@ import { assignmentCoversScope, isAdminUser } from "@/lib/permissions";
 import {
   subscribeToElectionResults,
   correctElectionResult,
+  getElectionCycles,
+  getContestsByCycle,
+  getPoliticalParties,
+  getElectionSettings,
   type ElectionResultDoc,
   type ElectionPartyResult,
 } from "@/lib/firebase/election";
 import { getCurrentTenant } from "@/lib/firebase/tenants";
-import type { LGA, Ward } from "@/types";
-
-const partyColors: Record<string, string> = {
-  apc: "#1B4F72",
-  pdp: "#27AE60",
-  ndc: "#E74C3C",
-};
+import type {
+  LGA,
+  Ward,
+  ElectionCycle,
+  ElectionContest,
+  PoliticalParty,
+} from "@/types";
 
 interface AlertToast {
   id: string;
@@ -59,13 +67,22 @@ export default function ElectionDashboard() {
   const isAdmin = isAdminUser(profile);
 
   const [lgas, setLgas] = useState<LGA[]>([]);
+  const [cycles, setCycles] = useState<ElectionCycle[]>([]);
+  const [contests, setContests] = useState<ElectionContest[]>([]);
+  const [allParties, setAllParties] = useState<PoliticalParty[]>([]);
   const [results, setResults] = useState<ElectionResultDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [tenantId, setTenantId] = useState("ifeanyi-4-nkanu");
 
-  // Filter state
+  // Selection states
+  const [selectedCycleId, setSelectedCycleId] = useState<string>("all");
+  const [selectedContestId, setSelectedContestId] = useState<string>("all");
   const [selectedLgaId, setSelectedLgaId] = useState<string>("all");
   const [selectedWardId, setSelectedWardId] = useState<string>("all");
+
+  // Configurable Party Comparison (Spec Section 38 & 39)
+  const [comparePartyA, setComparePartyA] = useState<string>("apc");
+  const [comparePartyB, setComparePartyB] = useState<string>("pdp");
 
   // Modals & Toasts
   const [toastAlerts, setToastAlerts] = useState<AlertToast[]>([]);
@@ -75,30 +92,68 @@ export default function ElectionDashboard() {
   const [editReason, setEditReason] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Load LGAs
+  // Initial load
   useEffect(() => {
-    async function initLgas() {
-      const data = await getAllLGAs();
-      setLgas(data);
-      const tenant = await getCurrentTenant();
-      setTenantId(tenant.id);
+    async function init() {
+      try {
+        const lgaData = await getAllLGAs();
+        setLgas(lgaData);
+        const tenant = await getCurrentTenant();
+        setTenantId(tenant.id);
+
+        const loadedSettings = await getElectionSettings();
+        const loadedCycles = await getElectionCycles();
+        setCycles(loadedCycles);
+
+        const defaultCycle =
+          loadedSettings?.active_election_cycle_id ||
+          loadedCycles[0]?.id ||
+          "general-election-2027";
+        setSelectedCycleId(defaultCycle);
+
+        const loadedContests = await getContestsByCycle(defaultCycle);
+        setContests(loadedContests);
+
+        const activeContest =
+          loadedSettings?.active_contest_id || loadedContests[0]?.id || "all";
+        setSelectedContestId(activeContest);
+
+        const loadedParties = await getPoliticalParties();
+        setAllParties(loadedParties);
+      } catch (err) {
+        console.error("Failed to load initial election dashboard data:", err);
+      }
     }
-    initLgas();
+    init();
   }, []);
 
-  // Determine query scope constraints for Firestore security rules
+  // Update contests when cycle selection changes
+  useEffect(() => {
+    if (selectedCycleId === "all") {
+      if (cycles.length > 0) {
+        getContestsByCycle(cycles[0].id).then((cList) => setContests(cList));
+      }
+    } else {
+      getContestsByCycle(selectedCycleId).then((cList) => setContests(cList));
+    }
+  }, [selectedCycleId, cycles]);
+
+  // Determine scope constraints for Firestore security rules
   const scopeConstraint = useMemo(() => {
     if (isAdmin || profile?.access_role === "election_officer") {
-      return undefined;
+      return selectedContestId !== "all"
+        ? { contest_id: selectedContestId }
+        : undefined;
     }
     if (profile?.ward_id && profile?.polling_unit_id) {
       return {
+        contest_id: selectedContestId !== "all" ? selectedContestId : undefined,
         ward_id: profile.ward_id,
         polling_unit_id: profile.polling_unit_id,
       };
     }
     return undefined;
-  }, [isAdmin, profile]);
+  }, [isAdmin, profile, selectedContestId]);
 
   // Real-time Firestore Listener
   useEffect(() => {
@@ -111,11 +166,9 @@ export default function ElectionDashboard() {
         setLoading(false);
 
         if (!isInitialLoad && docs.length > 0) {
-          // Detect newly arrived results that are approved for toast alert
           const newest = docs[docs.length - 1];
 
           if (newest.status === "approved") {
-            // Resolve names for toast
             let puName = newest.polling_unit_id;
             let wardName = newest.ward_id;
             let lgaName = "Enugu";
@@ -140,8 +193,6 @@ export default function ElectionDashboard() {
             };
 
             setToastAlerts((prev) => [...prev, alert]);
-
-            // Auto-dismiss alert after 6 seconds
             setTimeout(() => {
               setToastAlerts((prev) => prev.filter((a) => a.id !== alert.id));
             }, 6000);
@@ -158,7 +209,7 @@ export default function ElectionDashboard() {
     return () => unsubscribe();
   }, [tenantId, lgas, scopeConstraint]);
 
-  // Hierarchical Result Filtering based on User's Scope
+  // Hierarchical Scope Filtering
   const coveredResults = useMemo(() => {
     if (isAdmin) return results;
 
@@ -166,86 +217,119 @@ export default function ElectionDashboard() {
     if (activeAssignments.length === 0) return [];
 
     return results.filter((result) => {
-      return activeAssignments.some((assignment) =>
-        assignmentCoversScope(
-          assignment,
-          { scope_type: "ward", scope_id: result.ward_id },
-          lgas
-        ) ||
-        assignmentCoversScope(
-          assignment,
-          { scope_type: "polling_unit", scope_id: result.polling_unit_id },
-          lgas
-        )
+      return activeAssignments.some(
+        (assignment) =>
+          assignmentCoversScope(
+            assignment,
+            { scope_type: "ward", scope_id: result.ward_id },
+            lgas
+          ) ||
+          assignmentCoversScope(
+            assignment,
+            { scope_type: "polling_unit", scope_id: result.polling_unit_id },
+            lgas
+          )
       );
     });
   }, [isAdmin, assignments, results, lgas]);
 
-  // Apply Status (Only Approved count in official dashboard) and UI Dropdown Filters
-  const filteredResults = useMemo(() => {
+  // Operational Submissions vs Official Results
+  const operationalSubmissions = useMemo(() => {
     return coveredResults.filter((r) => {
-      // Official aggregation requires approved status
-      if (r.status !== "approved") return false;
-
-      if (selectedLgaId !== "all") {
-        const lga = lgas.find((l) => l.id === selectedLgaId);
-        if (lga && !lga.wards.some((w) => w.id === r.ward_id)) {
-          return false;
-        }
+      if (selectedContestId !== "all" && r.contest_id && r.contest_id !== selectedContestId) {
+        return false;
+      }
+      if (selectedLgaId !== "all" && r.lga_id !== selectedLgaId) {
+        return false;
       }
       if (selectedWardId !== "all" && r.ward_id !== selectedWardId) {
         return false;
       }
       return true;
     });
-  }, [coveredResults, selectedLgaId, selectedWardId, lgas]);
+  }, [coveredResults, selectedContestId, selectedLgaId, selectedWardId]);
 
-  // Aggregate Figures
+  // Official Approved Results (Strictly Section 24 & 42)
+  const officialApprovedResults = useMemo(() => {
+    return operationalSubmissions.filter((r) => r.status === "approved");
+  }, [operationalSubmissions]);
+
+  // Current Contest Object & Tracked Parties List
+  const currentContest = contests.find((c) => c.id === selectedContestId);
+  const trackedParties = currentContest?.tracked_parties || ["apc", "pdp", "lp", "apga", "adc"];
+
+  // Aggregated Official Party Totals & Operational Breakdown
   const aggregates = useMemo(() => {
-    let totalVotes = 0;
-    let apc = 0;
-    let pdp = 0;
-    let ndc = 0;
+    const partyTotals: Record<string, number> = {};
+    for (const p of trackedParties) {
+      partyTotals[p.toLowerCase()] = 0;
+    }
 
-    for (const r of filteredResults) {
-      for (const p of r.results) {
-        const v = Number(p.votes) || 0;
-        totalVotes += v;
-        if (p.party === "apc") apc += v;
-        if (p.party === "pdp") pdp += v;
-        if (p.party === "ndc") ndc += v;
+    let totalOfficialVotes = 0;
+
+    for (const r of officialApprovedResults) {
+      for (const pr of r.results) {
+        const partyKey = pr.party.toLowerCase();
+        const v = Number(pr.votes) || 0;
+        totalOfficialVotes += v;
+        partyTotals[partyKey] = (partyTotals[partyKey] || 0) + v;
       }
     }
 
+    // Determine leading party among tracked parties
+    let leadingParty = "None";
+    let leadingVotes = -1;
+    for (const [p, v] of Object.entries(partyTotals)) {
+      if (v > leadingVotes && v > 0) {
+        leadingVotes = v;
+        leadingParty = p.toUpperCase();
+      }
+    }
+
+    const votesA = partyTotals[comparePartyA.toLowerCase()] || 0;
+    const votesB = partyTotals[comparePartyB.toLowerCase()] || 0;
+    const marginAB = votesA - votesB;
+
+    const pendingCount = operationalSubmissions.filter(
+      (r) => r.status === "submitted" || r.status === "pending_review"
+    ).length;
+    const approvedCount = officialApprovedResults.length;
+    const rejectedCount = operationalSubmissions.filter((r) => r.status === "rejected").length;
+    const clarifyCount = operationalSubmissions.filter((r) => r.status === "clarification_required").length;
+    const reopenedCount = operationalSubmissions.filter((r) => r.status === "reopened").length;
+
     const totalPUsInScope = lgas.reduce(
-      (acc, l) =>
-        acc + l.wards.reduce((wAcc, w) => wAcc + w.pollingUnits.length, 0),
+      (acc, l) => acc + l.wards.reduce((wAcc, w) => wAcc + w.pollingUnits.length, 0),
       0
     );
 
-    const reportedUnits = filteredResults.length;
     const reportingPercent = totalPUsInScope > 0
-      ? ((reportedUnits / totalPUsInScope) * 100).toFixed(1)
+      ? ((approvedCount / totalPUsInScope) * 100).toFixed(1)
       : "0.0";
 
     return {
-      totalVotes,
-      apc,
-      pdp,
-      ndc,
-      reportedUnits,
-      totalUnits: totalPUsInScope || 200,
+      totalOfficialVotes,
+      partyTotals,
+      leadingParty,
+      leadingVotes,
+      votesA,
+      votesB,
+      marginAB,
+      pendingCount,
+      approvedCount,
+      rejectedCount,
+      clarifyCount,
+      reopenedCount,
+      totalPUsInScope,
       reportingPercent,
-      apcLead: apc - pdp,
     };
-  }, [filteredResults, lgas]);
+  }, [officialApprovedResults, operationalSubmissions, trackedParties, comparePartyA, comparePartyB, lgas]);
 
-  // Chart Data
+  // Chart Data per Ward
   const wardChartData = useMemo(() => {
-    const wardMap = new Map<string, { ward: string; APC: number; PDP: number; NDC: number }>();
+    const wardMap = new Map<string, Record<string, any>>();
 
-    for (const r of filteredResults) {
-      // Resolve ward name
+    for (const r of officialApprovedResults) {
       let wardName = r.ward_id;
       for (const l of lgas) {
         const w = l.wards.find((item) => item.id === r.ward_id);
@@ -256,28 +340,45 @@ export default function ElectionDashboard() {
       }
 
       if (!wardMap.has(wardName)) {
-        wardMap.set(wardName, { ward: wardName, APC: 0, PDP: 0, NDC: 0 });
+        const initObj: Record<string, any> = { ward: wardName };
+        for (const p of trackedParties) {
+          initObj[p.toUpperCase()] = 0;
+        }
+        wardMap.set(wardName, initObj);
       }
 
       const entry = wardMap.get(wardName)!;
-      for (const p of r.results) {
-        const v = Number(p.votes) || 0;
-        if (p.party === "apc") entry.APC += v;
-        if (p.party === "pdp") entry.PDP += v;
-        if (p.party === "ndc") entry.NDC += v;
+      for (const pr of r.results) {
+        const pKey = pr.party.toUpperCase();
+        entry[pKey] = (entry[pKey] || 0) + (Number(pr.votes) || 0);
       }
     }
 
     return Array.from(wardMap.values());
-  }, [filteredResults, lgas]);
+  }, [officialApprovedResults, lgas, trackedParties]);
 
-  const pieChartData = [
-    { name: "APC", value: aggregates.apc },
-    { name: "PDP", value: aggregates.pdp },
-    { name: "NDC", value: aggregates.ndc },
-  ];
+  // Pie Chart Data
+  const pieChartData = useMemo(() => {
+    return Object.entries(aggregates.partyTotals).map(([pKey, val]) => ({
+      name: pKey.toUpperCase(),
+      value: val,
+    }));
+  }, [aggregates.partyTotals]);
 
-  // Admin Correct Result Handler
+  // Dynamic Party Colors map
+  const getPartyColor = (partyKey: string) => {
+    const found = allParties.find(
+      (p) => p.id === partyKey.toLowerCase() || p.acronym.toLowerCase() === partyKey.toLowerCase()
+    );
+    if (found?.color) return found.color;
+    if (partyKey.toLowerCase() === "apc") return "#1B4F72";
+    if (partyKey.toLowerCase() === "pdp") return "#27AE60";
+    if (partyKey.toLowerCase() === "lp") return "#D35400";
+    if (partyKey.toLowerCase() === "apga") return "#8E44AD";
+    if (partyKey.toLowerCase() === "adc") return "#F39C12";
+    return "#34495E";
+  };
+
   const handleSaveCorrection = async () => {
     if (!editingResult || !profile) return;
     setSavingEdit(true);
@@ -303,15 +404,15 @@ export default function ElectionDashboard() {
 
   if (accessLoading || loading) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh]">
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-3">
         <Loader2 className="h-8 w-8 animate-spin text-apc-primary" />
-        <span className="ml-3 text-gray-500">Connecting to live election data...</span>
+        <span className="text-sm text-gray-500">Connecting to live contest results engine...</span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6 pb-12 max-w-7xl mx-auto">
       {/* Toast Alert Container */}
       <div className="fixed bottom-5 right-5 z-50 space-y-3 max-w-sm w-full pointer-events-none">
         {toastAlerts.map((a) => (
@@ -322,7 +423,7 @@ export default function ElectionDashboard() {
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2 text-apc-primary font-bold text-sm">
                 <Bell className="h-4 w-4 animate-bounce" />
-                <span>New Result Received</span>
+                <span>New Official Result Approved</span>
               </div>
               <button
                 onClick={() => setToastAlerts((prev) => prev.filter((item) => item.id !== a.id))}
@@ -347,28 +448,69 @@ export default function ElectionDashboard() {
         ))}
       </div>
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* Contest Selector & Specs Header (Spec Section 40) */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Election Operations Dashboard
+          <div className="flex items-center gap-2 text-apc-primary font-semibold text-xs tracking-wide uppercase mb-1">
+            <Vote className="w-4 h-4" />
+            <span>CONTEST-AWARE ELECTION DASHBOARD</span>
+          </div>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+            Official Results & Operational Collation
           </h1>
-          <p className="text-sm text-gray-500">
-            {isAdmin
-              ? "Live state-wide election results aggregation and evidence inspection."
-              : "Read-only aggregated election results for your authorized campaign scope."}
+          <p className="text-sm text-gray-500 mt-1">
+            Official totals are calculated strictly from <span className="font-bold text-emerald-700">APPROVED</span> results.
           </p>
         </div>
 
-        {/* Filter Dropdowns */}
+        {/* Global Selectors */}
         <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5 bg-gray-50 p-2 rounded-xl border border-gray-200">
+            <Layers className="w-4 h-4 text-gray-500" />
+            <select
+              value={selectedCycleId}
+              onChange={(e) => setSelectedCycleId(e.target.value)}
+              className="text-xs font-bold text-gray-900 bg-transparent border-0 focus:ring-0 cursor-pointer"
+            >
+              <option value="all">All Election Cycles</option>
+              {cycles.map((cy) => (
+                <option key={cy.id} value={cy.id}>
+                  {cy.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-apc-light/40 p-2 rounded-xl border border-apc-primary/30">
+            <Vote className="w-4 h-4 text-apc-primary" />
+            <select
+              value={selectedContestId}
+              onChange={(e) => setSelectedContestId(e.target.value)}
+              className="text-xs font-bold text-apc-primary bg-transparent border-0 focus:ring-0 cursor-pointer"
+            >
+              <option value="all">All Open Contests</option>
+              {contests.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter Bar */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Filter className="w-4 h-4 text-gray-500" />
+          <span className="text-xs font-bold text-gray-700">Geographic Filter:</span>
           <select
             value={selectedLgaId}
             onChange={(e) => {
               setSelectedLgaId(e.target.value);
               setSelectedWardId("all");
             }}
-            className="px-3 py-2 border rounded-lg text-xs font-semibold bg-white"
+            className="px-3 py-1.5 border rounded-lg text-xs font-semibold bg-gray-50"
           >
             <option value="all">All LGAs</option>
             {lgas.map((lga) => (
@@ -382,7 +524,7 @@ export default function ElectionDashboard() {
             value={selectedWardId}
             onChange={(e) => setSelectedWardId(e.target.value)}
             disabled={selectedLgaId === "all"}
-            className="px-3 py-2 border rounded-lg text-xs font-semibold bg-white disabled:bg-gray-100"
+            className="px-3 py-1.5 border rounded-lg text-xs font-semibold bg-gray-50 disabled:bg-gray-100"
           >
             <option value="all">All Wards</option>
             {selectedLgaId !== "all" &&
@@ -395,25 +537,54 @@ export default function ElectionDashboard() {
                 ))}
           </select>
         </div>
+
+        {/* Party Comparison Selector (Spec Sec 38) */}
+        <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border text-xs">
+          <ArrowRightLeft className="w-3.5 h-3.5 text-slate-500" />
+          <span className="font-bold text-slate-700">Compare Parties:</span>
+          <select
+            value={comparePartyA}
+            onChange={(e) => setComparePartyA(e.target.value)}
+            className="px-2 py-1 border rounded bg-white font-bold uppercase"
+          >
+            {trackedParties.map((p) => (
+              <option key={p} value={p}>
+                {p.toUpperCase()}
+              </option>
+            ))}
+          </select>
+          <span className="text-slate-400 font-bold">vs</span>
+          <select
+            value={comparePartyB}
+            onChange={(e) => setComparePartyB(e.target.value)}
+            className="px-2 py-1 border rounded bg-white font-bold uppercase"
+          >
+            {trackedParties.map((p) => (
+              <option key={p} value={p}>
+                {p.toUpperCase()}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Status Cards */}
+      {/* Official vs Operational Status Metrics Cards (Spec Section 41 & 42) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="bg-green-50/60 border-green-200">
+        <Card className="bg-emerald-50/60 border-emerald-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-green-700">
-                  Reported PUs
+                <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+                  Official Approved PUs
                 </p>
-                <p className="text-3xl font-bold text-green-800 mt-1">
-                  {aggregates.reportedUnits} / {aggregates.totalUnits}
+                <p className="text-3xl font-bold text-emerald-900 mt-1">
+                  {aggregates.approvedCount} / {aggregates.totalPUsInScope}
                 </p>
-                <p className="text-xs text-green-700 mt-1">
-                  {aggregates.reportingPercent}% coverage
+                <p className="text-xs text-emerald-700 mt-1 font-medium">
+                  {aggregates.reportingPercent}% Official Coverage
                 </p>
               </div>
-              <CheckCircle2 className="h-8 w-8 text-green-600 shrink-0" />
+              <CheckCircle2 className="h-8 w-8 text-emerald-600 shrink-0" />
             </div>
           </CardContent>
         </Card>
@@ -422,11 +593,14 @@ export default function ElectionDashboard() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Total Votes Cast
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                  Total Official Votes
                 </p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">
-                  {aggregates.totalVotes.toLocaleString()}
+                  {aggregates.totalOfficialVotes.toLocaleString()}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Leading: <span className="font-bold text-apc-primary">{aggregates.leadingParty}</span>
                 </p>
               </div>
               <Upload className="h-8 w-8 text-apc-primary shrink-0" />
@@ -436,50 +610,92 @@ export default function ElectionDashboard() {
 
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  APC Votes
-                </p>
-                <p className="text-3xl font-bold text-apc-primary mt-1">
-                  {aggregates.apc.toLocaleString()}
-                </p>
-              </div>
-              <AlertTriangle className="h-8 w-8 text-yellow-600 shrink-0" />
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                {comparePartyA.toUpperCase()} vs {comparePartyB.toUpperCase()} Margin
+              </p>
+              <p
+                className={`text-3xl font-bold mt-1 ${
+                  aggregates.marginAB >= 0 ? "text-emerald-700" : "text-red-700"
+                }`}
+              >
+                {aggregates.marginAB >= 0
+                  ? `+${aggregates.marginAB.toLocaleString()}`
+                  : aggregates.marginAB.toLocaleString()}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {comparePartyA.toUpperCase()}: {aggregates.votesA.toLocaleString()} | {comparePartyB.toUpperCase()}: {aggregates.votesB.toLocaleString()}
+              </p>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                APC Margin
-              </p>
-              <p
-                className={`text-3xl font-bold mt-1 ${
-                  aggregates.apcLead >= 0 ? "text-green-600" : "text-red-600"
-                }`}
-              >
-                {aggregates.apcLead >= 0 ? `+${aggregates.apcLead.toLocaleString()}` : aggregates.apcLead.toLocaleString()}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">votes relative to PDP</p>
+        {/* Operational Status Summary */}
+        <Card className="bg-slate-50 border-slate-200">
+          <CardContent className="p-5">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">
+              Operational Submissions Breakdown
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
+              <div className="bg-white p-2 rounded border text-amber-700">
+                Pending: {aggregates.pendingCount}
+              </div>
+              <div className="bg-white p-2 rounded border text-red-700">
+                Rejected: {aggregates.rejectedCount}
+              </div>
+              <div className="bg-white p-2 rounded border text-amber-800">
+                Clarify: {aggregates.clarifyCount}
+              </div>
+              <div className="bg-white p-2 rounded border text-purple-800">
+                Reopened: {aggregates.reopenedCount}
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
+      {/* Dynamic Party Totals Breakdown Bar */}
+      <Card>
+        <CardHeader className="py-4">
+          <CardTitle className="text-base font-bold text-slate-900">
+            Official Approved Party Totals ({trackedParties.length} Tracked Parties)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {trackedParties.map((p) => {
+              const pKey = p.toLowerCase();
+              const v = aggregates.partyTotals[pKey] || 0;
+              const pColor = getPartyColor(pKey);
+
+              return (
+                <div
+                  key={p}
+                  className="p-3 rounded-xl border flex flex-col items-center text-center space-y-1"
+                  style={{ borderLeftWidth: "4px", borderLeftColor: pColor }}
+                >
+                  <span className="text-xs font-bold uppercase text-slate-500">{p}</span>
+                  <span className="text-xl font-bold font-mono text-slate-900">
+                    {v.toLocaleString()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Charts */}
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Ward by Ward Results</CardTitle>
+            <CardTitle>Ward by Ward Official Results</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-80">
               {wardChartData.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-                  No election results submitted yet in this scope.
+                  No approved election results available in this scope.
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -488,9 +704,9 @@ export default function ElectionDashboard() {
                     <XAxis dataKey="ward" />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="APC" fill={partyColors.apc} />
-                    <Bar dataKey="PDP" fill={partyColors.pdp} />
-                    <Bar dataKey="NDC" fill={partyColors.ndc} />
+                    {trackedParties.map((p) => (
+                      <Bar key={p} dataKey={p.toUpperCase()} fill={getPartyColor(p)} />
+                    ))}
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -500,13 +716,13 @@ export default function ElectionDashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Vote Distribution</CardTitle>
+            <CardTitle>Official Vote Distribution</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-80">
-              {aggregates.totalVotes === 0 ? (
+              {aggregates.totalOfficialVotes === 0 ? (
                 <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-                  No votes recorded yet in this scope.
+                  No official votes recorded yet in this scope.
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -523,13 +739,7 @@ export default function ElectionDashboard() {
                       {pieChartData.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
-                          fill={
-                            entry.name === "APC"
-                              ? partyColors.apc
-                              : entry.name === "PDP"
-                              ? partyColors.pdp
-                              : partyColors.ndc
-                          }
+                          fill={getPartyColor(entry.name)}
                         />
                       ))}
                     </Pie>
@@ -542,11 +752,13 @@ export default function ElectionDashboard() {
         </Card>
       </div>
 
-      {/* Live Polling Unit Submissions & Evidence Inspection Table */}
+      {/* Submitted Polling Unit Results & Inspection Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Submitted Polling Unit Results ({filteredResults.length})</CardTitle>
+            <CardTitle>
+              Polling Unit Results ({operationalSubmissions.length})
+            </CardTitle>
             {!isAdmin && (
               <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
                 <Lock className="h-3 w-3" /> Read-Only View
@@ -556,7 +768,7 @@ export default function ElectionDashboard() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            {filteredResults.length === 0 ? (
+            {operationalSubmissions.length === 0 ? (
               <p className="text-center py-8 text-sm text-gray-500">
                 No polling unit election results available in this scope yet.
               </p>
@@ -565,18 +777,15 @@ export default function ElectionDashboard() {
                 <thead>
                   <tr className="border-b bg-gray-50 text-xs font-semibold uppercase text-gray-500">
                     <th className="text-left py-3 px-4">Polling Unit / Ward</th>
-                    <th className="text-right py-3 px-4">APC</th>
-                    <th className="text-right py-3 px-4">PDP</th>
-                    <th className="text-right py-3 px-4">NDC</th>
+                    <th className="text-left py-3 px-4">Contest</th>
+                    <th className="text-center py-3 px-4">Status</th>
                     <th className="text-center py-3 px-4">Form EC8 Evidence</th>
                     <th className="text-right py-3 px-4">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredResults.map((r) => {
-                    const apcVotes = r.results.find((p) => p.party === "apc")?.votes || 0;
-                    const pdpVotes = r.results.find((p) => p.party === "pdp")?.votes || 0;
-                    const ndcVotes = r.results.find((p) => p.party === "ndc")?.votes || 0;
+                  {operationalSubmissions.map((r) => {
+                    const contestObj = contests.find((c) => c.id === r.contest_id);
 
                     return (
                       <tr key={r.id} className="hover:bg-gray-50/80">
@@ -584,9 +793,28 @@ export default function ElectionDashboard() {
                           <p className="font-semibold text-gray-900">{r.polling_unit_id}</p>
                           <p className="text-xs text-gray-500">Ward: {r.ward_id}</p>
                         </td>
-                        <td className="text-right py-3 px-4 font-semibold text-blue-900">{apcVotes}</td>
-                        <td className="text-right py-3 px-4 font-semibold text-green-900">{pdpVotes}</td>
-                        <td className="text-right py-3 px-4 font-semibold text-red-900">{ndcVotes}</td>
+                        <td className="py-3 px-4">
+                          <p className="font-semibold text-xs text-emerald-800">
+                            {contestObj?.name || r.contest_id || "State Contest"}
+                          </p>
+                        </td>
+                        <td className="text-center py-3 px-4">
+                          <span
+                            className={`px-2.5 py-1 text-xs font-bold rounded-full ${
+                              r.status === "approved"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : r.status === "rejected"
+                                ? "bg-red-100 text-red-800"
+                                : r.status === "clarification_required"
+                                ? "bg-amber-100 text-amber-800"
+                                : r.status === "reopened"
+                                ? "bg-purple-100 text-purple-800"
+                                : "bg-blue-100 text-blue-800"
+                            }`}
+                          >
+                            {r.status}
+                          </span>
+                        </td>
                         <td className="text-center py-3 px-4">
                           {r.cloudinary_url ? (
                             <button
@@ -684,9 +912,9 @@ export default function ElectionDashboard() {
                     {inspectResult.history.map((h, i) => (
                       <div key={i} className="bg-gray-50 p-3 rounded-lg border text-xs space-y-1">
                         <p className="font-semibold text-gray-800">
-                          Correction by Admin: {h.edited_by}
+                          Action: {h.action} | Actor: {h.edited_by}
                         </p>
-                        <p className="text-gray-500">Reason: {h.reason || "None specified"}</p>
+                        <p className="text-gray-500">Reason / Notes: {h.notes || h.reason || "None specified"}</p>
                         <p className="text-gray-400">Timestamp: {String(h.edited_at)}</p>
                       </div>
                     ))}
@@ -741,7 +969,7 @@ export default function ElectionDashboard() {
                         updated[idx].votes = parseInt(e.target.value) || 0;
                         setEditFormResults(updated);
                       }}
-                      className="w-28 px-3 py-2 border rounded-lg text-sm text-right"
+                      className="w-28 px-3 py-2 border rounded-lg text-sm text-right font-mono font-bold"
                     />
                   </div>
                 ))}

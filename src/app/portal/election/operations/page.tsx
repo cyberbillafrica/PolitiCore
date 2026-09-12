@@ -15,6 +15,9 @@ import {
   Building2,
   MapPin,
   History,
+  Vote,
+  Clock,
+  User,
 } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,15 +26,27 @@ import {
   ElectionResultStatus,
   reviewElectionResult,
   subscribeToElectionResults,
+  getElectionCycles,
+  getContestsByCycle,
 } from "@/lib/firebase/election";
 import { getEnuguElectoralData } from "@/lib/firebase/electoral";
-import type { EnuguStateElectoralData, PollingUnit } from "@/types";
+import type {
+  EnuguStateElectoralData,
+  PollingUnit,
+  ElectionContest,
+  ElectionCycle,
+} from "@/types";
 
 export default function ElectionOperationsPage() {
   const router = useRouter();
   const { profile, loading: authLoading } = useAuth();
 
   const [electoralData, setElectoralData] = useState<EnuguStateElectoralData | null>(null);
+  const [cycles, setCycles] = useState<ElectionCycle[]>([]);
+  const [contests, setContests] = useState<ElectionContest[]>([]);
+  const [selectedCycleId, setSelectedCycleId] = useState<string>("all");
+  const [selectedContestId, setSelectedContestId] = useState<string>("all");
+
   const [results, setResults] = useState<ElectionResultDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -40,17 +55,38 @@ export default function ElectionOperationsPage() {
   const [submittingAction, setSubmittingAction] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Fetch electoral data taxonomy
+  // Fetch electoral data taxonomy and contests
   useEffect(() => {
-    getEnuguElectoralData().then((data) => {
-      if (data) setElectoralData(data);
-    });
+    async function init() {
+      const eData = await getEnuguElectoralData();
+      if (eData) setElectoralData(eData);
+
+      const cycList = await getElectionCycles();
+      setCycles(cycList);
+
+      if (cycList.length > 0) {
+        const cList = await getContestsByCycle(cycList[0].id);
+        setContests(cList);
+      }
+    }
+    init();
   }, []);
 
+  // Reload contests when cycle changes
+  useEffect(() => {
+    if (selectedCycleId === "all") {
+      if (cycles.length > 0) {
+        getContestsByCycle(cycles[0].id).then((cList) => setContests(cList));
+      }
+    } else {
+      getContestsByCycle(selectedCycleId).then((cList) => setContests(cList));
+    }
+  }, [selectedCycleId, cycles]);
+
   // Helper map for Ward and Polling Unit labels
-  const getElectoralLabels = (wardId: string, puId: string) => {
+  const getElectoralLabels = (wardId: string, puId: string, lgaId?: string) => {
     if (!electoralData) {
-      return { lga: "Loading...", ward: wardId, pu: puId };
+      return { lga: lgaId || "Enugu State", ward: wardId, pu: puId };
     }
 
     let lgaName = "";
@@ -58,9 +94,12 @@ export default function ElectionOperationsPage() {
     let puName = "";
 
     for (const lga of electoralData.lgas) {
+      if (lgaId && lga.id === lgaId) {
+        lgaName = lga.name;
+      }
       for (const ward of lga.wards) {
         if (ward.id === wardId) {
-          lgaName = lga.name;
+          if (!lgaName) lgaName = lga.name;
           wardName = ward.name;
           const pu = ward.pollingUnits.find((p: PollingUnit) => p.id === puId);
           if (pu) puName = pu.name;
@@ -71,7 +110,7 @@ export default function ElectionOperationsPage() {
     }
 
     return {
-      lga: lgaName || "Enugu State",
+      lga: lgaName || lgaId || "Enugu State",
       ward: wardName || wardId,
       pu: puName || puId,
     };
@@ -103,6 +142,8 @@ export default function ElectionOperationsPage() {
     if (!profile) return;
 
     const tenantId = profile.tenant_id || "default";
+    const scopeConstraint = selectedContestId !== "all" ? { contest_id: selectedContestId } : undefined;
+
     const unsubscribe = subscribeToElectionResults(
       tenantId,
       (data) => {
@@ -112,11 +153,12 @@ export default function ElectionOperationsPage() {
       (err) => {
         console.error("Failed to subscribe to results:", err);
         setLoading(false);
-      }
+      },
+      scopeConstraint
     );
 
     return () => unsubscribe();
-  }, [profile]);
+  }, [profile, selectedContestId]);
 
   if (authLoading || loading) {
     return (
@@ -128,6 +170,9 @@ export default function ElectionOperationsPage() {
   }
 
   const filteredResults = results.filter((res) => {
+    if (selectedContestId !== "all" && res.contest_id && res.contest_id !== selectedContestId) {
+      return false;
+    }
     if (statusFilter === "all") return true;
     return res.status === statusFilter;
   });
@@ -261,13 +306,29 @@ export default function ElectionOperationsPage() {
         </div>
       )}
 
-      {/* Filter Toolbar */}
+      {/* Contest & Status Filter Toolbar */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-500" />
-          <span className="text-sm font-medium text-slate-700">Filter by Status:</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Vote className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-bold text-slate-700">Contest:</span>
+            <select
+              value={selectedContestId}
+              onChange={(e) => setSelectedContestId(e.target.value)}
+              className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-slate-50 text-slate-900"
+            >
+              <option value="all">All Contests</option>
+              {contests.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
+          <Filter className="w-4 h-4 text-slate-500" />
           {[
             { id: "all", label: "All Results" },
             { id: "submitted", label: "Pending Review" },
@@ -304,14 +365,15 @@ export default function ElectionOperationsPage() {
 
           {filteredResults.length === 0 ? (
             <div className="p-12 text-center text-slate-500 text-sm">
-              No election submissions match the selected filter.
+              No election submissions match the selected contest and status filter.
             </div>
           ) : (
             <div className="divide-y divide-slate-100 max-h-[700px] overflow-y-auto">
               {filteredResults.map((res) => {
-                const labels = getElectoralLabels(res.ward_id, res.polling_unit_id);
+                const labels = getElectoralLabels(res.ward_id, res.polling_unit_id, res.lga_id);
                 const isSelected = selectedResult?.id === res.id;
                 const totalVotes = res.results.reduce((acc, curr) => acc + (curr.votes || 0), 0);
+                const contestObj = contests.find((c) => c.id === res.contest_id);
 
                 return (
                   <div
@@ -328,6 +390,9 @@ export default function ElectionOperationsPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-slate-900 text-sm">{labels.pu}</span>
                         {getStatusBadge(res.status)}
+                      </div>
+                      <div className="text-[11px] font-semibold text-emerald-800">
+                        Contest: {contestObj?.name || res.contest_id || "State Contest"}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-slate-500">
                         <span className="flex items-center gap-1">
@@ -368,14 +433,32 @@ export default function ElectionOperationsPage() {
                   {getStatusBadge(selectedResult.status)}
                 </div>
                 {(() => {
-                  const labels = getElectoralLabels(selectedResult.ward_id, selectedResult.polling_unit_id);
+                  const labels = getElectoralLabels(selectedResult.ward_id, selectedResult.polling_unit_id, selectedResult.lga_id);
+                  const contestObj = contests.find((c) => c.id === selectedResult.contest_id);
                   return (
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-900">{labels.pu}</h3>
+                    <div className="space-y-1">
+                      <div className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                        Contest: {contestObj?.name || selectedResult.contest_id || "General Contest"}
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900 pt-1">{labels.pu}</h3>
                       <p className="text-xs text-slate-500">{labels.lga} LGA • Ward {labels.ward}</p>
                     </div>
                   );
                 })()}
+              </div>
+
+              {/* Submitter Info Specs (Sec 53) */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 text-slate-700 font-semibold">
+                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Submitter ID:</span> {selectedResult.submitted_by}
+                </div>
+                {selectedResult.created_at ? (
+                  <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Submission Time:</span> {String(selectedResult.created_at)}
+                  </div>
+                ) : null}
               </div>
 
               {/* Form EC8 Preview */}
@@ -410,7 +493,7 @@ export default function ElectionOperationsPage() {
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1.5">
                   {selectedResult.results.map((r, i) => (
                     <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-slate-200 last:border-0">
-                      <span className="font-bold text-slate-800">{r.party}</span>
+                      <span className="font-bold uppercase text-slate-800">{r.party}</span>
                       <span className="font-mono font-bold text-emerald-700 text-sm">{r.votes.toLocaleString()}</span>
                     </div>
                   ))}
@@ -477,8 +560,8 @@ export default function ElectionOperationsPage() {
                           <span className="font-semibold text-slate-700">Action: {item.action}</span>
                           <span>{new Date(item.edited_at as string).toLocaleTimeString()}</span>
                         </div>
-                        {item.notes && <p className="text-slate-600 text-[11px] mt-0.5">{item.notes}</p>}
-                        {item.reason && <p className="text-slate-600 text-[11px] mt-0.5">Reason: {item.reason}</p>}
+                        {item.notes && <p className="text-slate-600 text-[11px] mt-0.5">{String(item.notes)}</p>}
+                        {item.reason && <p className="text-slate-600 text-[11px] mt-0.5">Reason: {String(item.reason)}</p>}
                       </div>
                     ))}
                   </div>
