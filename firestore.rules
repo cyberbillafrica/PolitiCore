@@ -766,6 +766,35 @@ match /issues/{issueId} {
 
 
 // ============================================================
+// ELECTION CYCLES, CONTESTS, PARTIES & CANDIDATES
+// ============================================================
+
+match /election_cycles/{cycleId} {
+  allow read: if isSignedIn();
+  allow create, update, delete: if isAdmin();
+}
+
+match /election_contests/{contestId} {
+  allow read: if isSignedIn();
+  allow create, update, delete: if isAdmin();
+}
+
+match /political_parties/{partyId} {
+  allow read: if true;
+  allow create, update, delete: if isAdmin();
+}
+
+match /election_candidates/{candidateId} {
+  allow read: if isSignedIn();
+  allow create, update, delete: if isAdmin();
+}
+
+match /election_settings/{tenantId} {
+  allow read: if isSignedIn();
+  allow create, update: if isAdmin();
+}
+
+// ============================================================
 // ELECTION RESULTS
 // ============================================================
 
@@ -775,11 +804,7 @@ match /election_results/{resultId} {
    * READ
    *
    * Admin and Election Officer retain global tenant visibility.
-   *
    * Campaign members retain access to their registered PU.
-   *
-   * Authorized organizational users can receive broader
-   * visibility through the existing user_access mechanism.
    */
   allow read: if canReadElectionResult(resource.data);
 
@@ -788,10 +813,8 @@ match /election_results/{resultId} {
    * CREATE
    *
    * Campaign members may submit only for their registered PU.
-   *
    * Election Officers/Admins may submit for any PU.
-   *
-   * Deterministic ID ensures one result document per PU.
+   * Supports both contest_id__polling_unit_id and ward_id__polling_unit_id ID formats.
    */
   allow create: if electionModeEnabled()
     && !exists(
@@ -805,10 +828,10 @@ match /election_results/{resultId} {
     && request.resource.data.status == "submitted"
     && request.resource.data.verified == false
     && request.resource.data.cloudinary_url is string
-    && resultId
-      == request.resource.data.ward_id
-         + "__"
-         + request.resource.data.polling_unit_id
+    && (
+      resultId == request.resource.data.contest_id + "__" + request.resource.data.polling_unit_id
+      || resultId == request.resource.data.ward_id + "__" + request.resource.data.polling_unit_id
+    )
     && (
       isAdminOrElectionOfficer()
       ||
@@ -821,11 +844,6 @@ match /election_results/{resultId} {
 
   /*
    * OFFICER REVIEW
-   *
-   * This is the ONLY route that can change election status
-   * or verified state.
-   *
-   * Admin cannot approve merely by virtue of admin access.
    */
   allow update: if officerReviewUpdate()
     && validOfficerTransition();
@@ -833,21 +851,12 @@ match /election_results/{resultId} {
 
   /*
    * ADMINISTRATIVE CORRECTION
-   *
-   * Admin can correct typed result values and append history.
-   *
-   * Admin cannot approve, reject, reopen, or otherwise change
-   * the workflow state through this route.
    */
   allow update: if adminCorrectionUpdate();
 
 
   /*
    * NO DELETE
-   *
-   * Election results are historical election records.
-   * Correction/review/reopen must preserve the document and
-   * its audit history.
    */
   allow delete: if false;
 }
