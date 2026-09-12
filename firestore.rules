@@ -152,6 +152,25 @@ function hasAccess(permission, scopeType, scopeId) {
     || hasScopedAccess(permission, scopeType, scopeId);
 }
 
+function hasAccessWithDescendants(permission, scopeType, scopeId) {
+  return hasGlobalAccess(permission)
+    || hasScopedAccess(permission, scopeType, scopeId)
+    || hasScopedAccess(permission, "campaign", "ifeanyi-4-nkanu")
+    || hasScopedAccess(permission, "state", "enugu-state")
+    || (
+      (scopeType == "ward" || scopeType == "polling_unit")
+      && userExists()
+      && callerProfile().lga_id != null
+      && hasScopedAccess(permission, "lga", callerProfile().lga_id)
+    )
+    || (
+      scopeType == "polling_unit"
+      && userExists()
+      && callerProfile().ward_id != null
+      && hasScopedAccess(permission, "ward", callerProfile().ward_id)
+    );
+}
+
 
 // ============================================================
 // ELECTION
@@ -615,7 +634,7 @@ match /campaign_activities/{activityId} {
 
   allow read: if isSignedIn()
     && sameTenant(resource.data)
-    && hasAccess(
+    && hasAccessWithDescendants(
       "view_activities",
       resource.data.scope_type,
       resource.data.scope_id
@@ -689,7 +708,7 @@ match /campaign_field_reports/{reportId} {
 
   allow read: if isSignedIn()
     && resource.data.tenant_id == callerTenantId()
-    && hasAccess(
+    && hasAccessWithDescendants(
       "review_field_report",
       resource.data.scope_type,
       resource.data.scope_id
@@ -736,7 +755,7 @@ match /issues/{issueId} {
 
   allow read: if isSignedIn()
     && resource.data.tenant_id == callerTenantId()
-    && hasAccess(
+    && hasAccessWithDescendants(
       "manage_issue",
       resource.data.scope_type,
       resource.data.scope_id

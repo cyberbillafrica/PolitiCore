@@ -11,8 +11,11 @@ import {
 } from "firebase/firestore";
 
 import { db } from "./config";
+import { CURRENT_TENANT_ID } from "./tenants";
+import { getAllLGAs } from "@/lib/constants";
+import { expandAssignmentToScopes } from "@/lib/organization";
 
-import type { OrganizationalAssignment, ScopeType } from "@/types";
+import type { OrganizationalAssignment, ScopeType, LGA } from "@/types";
 
 /*
  * ============================================================
@@ -140,28 +143,48 @@ export async function getAllCampaignIssues(): Promise<CampaignIssue[]> {
 
 export async function getScopedCampaignIssues(
   assignment: OrganizationalAssignment,
+  lgasData?: LGA[],
 ): Promise<CampaignIssue[]> {
-  if (
-    assignment.scope_type === "campaign" ||
-    assignment.scope_type === "state" ||
-    assignment.scope_type === "senatorial_zone"
-  ) {
-    return getAllCampaignIssues();
+  if (!assignment || assignment.status !== "active") {
+    return [];
   }
 
-  const q = query(
-    collection(db, "issues"),
-    where("scope_type", "==", assignment.scope_type),
-    where("scope_id", "==", assignment.scope_id),
-    orderBy("created_at", "desc"),
+  const lgas = lgasData || (await getAllLGAs());
+  const expandedScopes = expandAssignmentToScopes(assignment, lgas);
+
+  if (expandedScopes.length === 0) {
+    return [];
+  }
+
+  const resultsMap = new Map<string, CampaignIssue>();
+
+  await Promise.all(
+    expandedScopes.map(async ({ scope_type, scope_id }) => {
+      const q = query(
+        collection(db, "issues"),
+        where("tenant_id", "==", CURRENT_TENANT_ID),
+        where("scope_type", "==", scope_type),
+        where("scope_id", "==", scope_id),
+        orderBy("created_at", "desc"),
+      );
+
+      const snapshot = await getDocs(q);
+
+      snapshot.docs.forEach((docSnapshot) => {
+        const item = {
+          id: docSnapshot.id,
+          ...docSnapshot.data(),
+        } as CampaignIssue;
+        resultsMap.set(item.id, item);
+      });
+    }),
   );
 
-  const snapshot = await getDocs(q);
-
-  return snapshot.docs.map((document) => ({
-    id: document.id,
-    ...document.data(),
-  })) as CampaignIssue[];
+  return Array.from(resultsMap.values()).sort((a, b) => {
+    const aDate = a.created_at ? new Date(String(a.created_at)).getTime() : 0;
+    const bDate = b.created_at ? new Date(String(b.created_at)).getTime() : 0;
+    return bDate - aDate;
+  });
 }
 
 /*

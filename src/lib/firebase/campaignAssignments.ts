@@ -15,6 +15,8 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase/config";
+import { expandAssignmentToScopes } from "@/lib/organization";
+import type { OrganizationalAssignment, LGA } from "@/types";
 
 /*
  * ============================================================
@@ -135,6 +137,51 @@ export async function getAllCampaignAssignments(
   const snapshot = await getDocs(q);
 
   return snapshot.docs.map((item) => mapAssignment(item.id, item.data()));
+}
+
+/**
+ * Gets campaign assignments for an active organizational assignment by expanding
+ * its scope to all descendant scopes using expandAssignmentToScopes.
+ */
+export async function getAssignmentsForAssignmentScope(
+  assignment: OrganizationalAssignment,
+  lgas: LGA[],
+): Promise<CampaignAssignment[]> {
+  if (!assignment || assignment.status !== "active") {
+    return [];
+  }
+
+  const expandedScopes = expandAssignmentToScopes(assignment, lgas);
+  if (expandedScopes.length === 0) {
+    return [];
+  }
+
+  const resultsMap = new Map<string, CampaignAssignment>();
+
+  await Promise.all(
+    expandedScopes.map(async ({ scope_type, scope_id }) => {
+      const q = query(
+        collection(db, COLLECTION),
+        where("tenant_id", "==", assignment.tenant_id),
+        where("scope_type", "==", scope_type),
+        where("scope_id", "==", scope_id),
+        orderBy("created_at", "desc"),
+      );
+
+      const snapshot = await getDocs(q);
+
+      snapshot.docs.forEach((docSnapshot) => {
+        const item = mapAssignment(docSnapshot.id, docSnapshot.data());
+        resultsMap.set(item.id, item);
+      });
+    }),
+  );
+
+  return Array.from(resultsMap.values()).sort((a, b) => {
+    const aDate = a.created_at ? new Date(String(a.created_at)).getTime() : 0;
+    const bDate = b.created_at ? new Date(String(b.created_at)).getTime() : 0;
+    return bDate - aDate;
+  });
 }
 
 export async function getMyCampaignAssignments(

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { isAdminUser } from "@/lib/permissions";
 import SocialMemberDashboard from "@/components/dashboard/SocialMemberDashboard";
 import CampaignDashboard from "@/components/dashboard/CampaignDashboard";
 import ElectionOfficerDashboard from "@/components/dashboard/ElectionOfficerDashboard";
@@ -12,13 +11,10 @@ import { Loader2 } from "lucide-react";
 export default function DashboardPage() {
   const { profile, loading } = useAuth();
 
-  const isCampaignMember =
-    profile?.membership_types?.includes("campaign_member") ?? false;
-  const isSocialMember =
-    profile?.membership_types?.includes("social_member") ?? false;
+  const isCampaignMember = profile?.membership_types?.includes("campaign_member") ?? false;
+  const isSocialMember = profile?.membership_types?.includes("social_member") ?? false;
 
-  const [dashboardView, setDashboardView] =
-    useState<"campaign" | "social">("campaign");
+  const [dashboardView, setDashboardView] = useState<"campaign" | "social">("campaign");
 
   if (loading || !profile) {
     return (
@@ -35,7 +31,7 @@ export default function DashboardPage() {
    */
 
   // Highest portal authority.
-  if (isAdminUser(profile)) {
+  if (profile.access_role === "admin") {
     return <AdminDashboard />;
   }
 

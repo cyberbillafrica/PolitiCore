@@ -226,3 +226,68 @@ export function getCoveredPollingUnitIds(
 
   return Array.from(puIds);
 }
+
+/**
+ * Given one active assignment and the LGA list, return the full set of descendant
+ * { scope_type, scope_id } tuples.
+ * - campaign / state / senatorial_zone → itself + all LGAs + all wards + all PUs
+ * - lga → itself + all wards under LGA + all PUs under LGA
+ * - ward → itself + all PUs under Ward
+ * - polling_unit → itself
+ */
+export function expandAssignmentToScopes(
+  assignment: OrganizationalAssignment,
+  lgas: LGA[],
+): Array<{ scope_type: ScopeType; scope_id: string }> {
+  if (!assignment || assignment.status !== "active") return [];
+
+  const scopesMap = new Map<string, { scope_type: ScopeType; scope_id: string }>();
+
+  function addScope(scopeType: ScopeType, scopeId: string) {
+    if (!scopeId) return;
+    const key = `${scopeType}__${scopeId}`;
+    if (!scopesMap.has(key)) {
+      scopesMap.set(key, { scope_type: scopeType, scope_id: scopeId });
+    }
+  }
+
+  // Always include the assignment's own scope
+  addScope(assignment.scope_type, assignment.scope_id);
+
+  const { scope_type, scope_id } = assignment;
+
+  if (scope_type === "campaign" || scope_type === "state" || scope_type === "senatorial_zone") {
+    for (const lga of lgas) {
+      addScope("lga", lga.id);
+      for (const ward of lga.wards) {
+        addScope("ward", ward.id);
+        for (const pu of ward.pollingUnits) {
+          addScope("polling_unit", pu.id);
+        }
+      }
+    }
+  } else if (scope_type === "lga") {
+    const lga = lgas.find(
+      (l) => l.id === scope_id || l.id.toLowerCase() === scope_id.toLowerCase(),
+    );
+    if (lga) {
+      for (const ward of lga.wards) {
+        addScope("ward", ward.id);
+        for (const pu of ward.pollingUnits) {
+          addScope("polling_unit", pu.id);
+        }
+      }
+    }
+  } else if (scope_type === "ward") {
+    for (const lga of lgas) {
+      const ward = lga.wards.find((w) => w.id === scope_id);
+      if (ward) {
+        for (const pu of ward.pollingUnits) {
+          addScope("polling_unit", pu.id);
+        }
+      }
+    }
+  }
+
+  return Array.from(scopesMap.values());
+}

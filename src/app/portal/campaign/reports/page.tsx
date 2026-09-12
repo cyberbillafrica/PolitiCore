@@ -24,11 +24,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   createCampaignFieldReport,
   getMyCampaignReports,
-  getScopedCampaignReports,
+  getScopedCampaignReportsForAssignment,
   getAllCampaignReportsForTenant,
   type CampaignFieldReport,
   type CampaignReportType,
 } from "@/lib/firebase/campaignReports";
+import { getAllLGAs } from "@/lib/constants";
 import { isAdminUser } from "@/lib/permissions";
 
 import {
@@ -156,10 +157,10 @@ export default function CampaignReportsPage() {
       } else if (canReview && primaryAssignment && profile.tenant_id) {
         setScopeLoading(true);
         try {
-          const scoped = await getScopedCampaignReports(
-            profile.tenant_id,
-            primaryAssignment.scope_type,
-            primaryAssignment.scope_id,
+          const lgas = await getAllLGAs();
+          const scoped = await getScopedCampaignReportsForAssignment(
+            primaryAssignment,
+            lgas,
           );
           setScopedReports(scoped);
         } finally {

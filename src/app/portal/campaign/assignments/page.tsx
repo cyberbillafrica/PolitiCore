@@ -30,10 +30,11 @@ import {
   deleteCampaignAssignment,
   getAllCampaignAssignments,
   getMyCampaignAssignments,
-  getScopedCampaignAssignments,
+  getAssignmentsForAssignmentScope,
   updateCampaignAssignment,
   type CampaignAssignment,
 } from "@/lib/firebase/campaignAssignments";
+import { getAllLGAs } from "@/lib/constants";
 
 import {
   getAllCampaignMembersForTenant,
@@ -321,10 +322,10 @@ export default function CampaignAssignmentsPage() {
         setAreaLoading(true);
 
         try {
-          const scoped = await getScopedCampaignAssignments(
-            profile.tenant_id,
-            primaryAssignment.scope_type,
-            primaryAssignment.scope_id,
+          const lgas = await getAllLGAs();
+          const scoped = await getAssignmentsForAssignmentScope(
+            primaryAssignment,
+            lgas,
           );
 
           setAreaAssignments(scoped);
