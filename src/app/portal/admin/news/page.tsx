@@ -111,6 +111,38 @@ export default function AdminNewsCMSPage() {
     setIsEditorOpen(true);
   }
 
+  function formatScheduledAtInput(raw: unknown): string {
+    if (!raw) return "";
+
+    let date: Date | null = null;
+
+    if (raw && typeof raw === "object" && "seconds" in raw) {
+      const ts = raw as { seconds: number };
+      date = new Date(ts.seconds * 1000);
+    } else if (raw instanceof Date) {
+      date = raw;
+    } else if (typeof raw === "string" || typeof raw === "number") {
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) {
+        date = d;
+      }
+    }
+
+    if (!date || isNaN(date.getTime())) {
+      return "";
+    }
+
+    // Format to YYYY-MM-DDTHH:mm for datetime-local input
+    const pad = (num: number) => String(num).padStart(2, "0");
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
   function openEditModal(article: NewsArticle) {
     setEditingArticle(article);
     setFormTitle(article.title);
@@ -121,9 +153,7 @@ export default function AdminNewsCMSPage() {
     setFormCategory(article.category || "Campaign Update");
     setFormAuthor(article.author || profile?.full_name || "Campaign Team");
     setFormStatus(article.status || "draft");
-    setFormScheduledAt(
-      article.scheduled_at ? String(article.scheduled_at) : "",
-    );
+    setFormScheduledAt(formatScheduledAtInput(article.scheduled_at));
     setFormFeaturedImage(article.featured_image || "");
     setIsEditorOpen(true);
   }

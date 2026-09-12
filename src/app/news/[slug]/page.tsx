@@ -19,8 +19,9 @@ interface PageProps {
   }>;
 }
 
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://ifeanyichukwu-2027.vercel.app/";
+const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL || "https://ifeanyichukwu-2027.vercel.app"
+).replace(/\/+$/, "");
 
 // ─────────────────────────────────────────────
 // HELPERS
@@ -60,7 +61,8 @@ function getAbsoluteImageUrl(image?: string) {
     return image;
   }
 
-  return `${SITE_URL}${image.startsWith("/") ? "" : "/"}${image}`;
+  const cleanPath = image.replace(/^\/+/, "");
+  return `${SITE_URL}/${cleanPath}`;
 }
 
 // ─────────────────────────────────────────────
