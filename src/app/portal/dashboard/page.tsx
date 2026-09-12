@@ -10,6 +10,11 @@ import { Loader2 } from "lucide-react";
 export default function DashboardPage() {
   const { profile, loading } = useAuth();
 
+  const isCampaignMember = profile?.membership_types?.includes("campaign_member") ?? false;
+  const isSocialMember = profile?.membership_types?.includes("social_member") ?? false;
+
+  const [dashboardView, setDashboardView] = useState<"campaign" | "social">("campaign");
+
   if (loading || !profile) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center gap-2 text-gray-500">
@@ -22,9 +27,6 @@ export default function DashboardPage() {
   /*
    * Dashboard routing is based on authority first,
    * then membership type.
-   *
-   * Admin and Election Officer are access roles.
-   * Social Member and Campaign Member are membership types.
    */
 
   // Highest portal authority.

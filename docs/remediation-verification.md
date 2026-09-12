@@ -1579,3 +1579,27 @@ Route (app)
 ○  (Static)   prerendered as static content
 ƒ  (Dynamic)  server-rendered on demand
 ```
+
+---
+
+## 7. Batch B Remediation Status Table
+
+| Item ID | Description | Status | Files Touched | Notes |
+| --- | --- | --- | --- | --- |
+| J-B1 | Admin guard audit (page-level) | Done | `src/app/portal/dashboard/page.tsx`, `src/app/portal/profile/page.tsx`, `src/app/portal/campaign/members/[id]/page.tsx`, `src/app/portal/campaign/coordination/page.tsx`, `src/app/portal/campaign/activities/page.tsx`, `src/app/portal/campaign/assignments/page.tsx`, `src/app/portal/campaign/area/page.tsx`, `src/app/portal/tasks/page.tsx`, `src/app/portal/election/upload/page.tsx`, `src/app/portal/admin/members/add/page.tsx`, `src/app/portal/admin/gallery/page.tsx`, `src/app/portal/admin/biography/page.tsx`, `src/app/portal/admin/news/page.tsx`, `src/app/portal/admin/contact-messages/page.tsx`, `src/app/portal/admin/announcements/page.tsx`, `src/app/portal/admin/manifesto/page.tsx`, `src/components/dashboard/SocialMemberDashboard.tsx`, `src/components/dashboard/CampaignDashboard.tsx` | Replaced direct `access_role === "admin"` checks with `isAdminUser(profile)`. |
+| J-B2 | Super admins in `canReportElectionActivity` | Done | `src/app/portal/layout.tsx` | Replaced raw `role === "admin"` check with `isAdmin`. |
+| J-B3 | Standardize social media fields | Done | `src/app/portal/admin/members/add/page.tsx`, `src/app/portal/tasks/page.tsx`, `src/lib/firebase/auth.ts` | Replaced `_username` with `_name` across forms and auth parameters. |
+| J-B4 | Admin members table Ward column | Done | `src/app/portal/admin/members/page.tsx` | Updated table cell to render `m.ward_id`. |
+| J-B5 | Tenant filter in `getScopedCampaignMembers` | Done | `src/lib/firebase/campaignMembers.ts` | Added `where("tenant_id", "==", CURRENT_TENANT_ID)` to all queries inside `getScopedCampaignMembers`. |
+| J-B6 | Tenant filter + safe write in campaign issues | Done | `src/lib/firebase/campaignIssues.ts` | Filtered `getAllCampaignIssues()` by `CURRENT_TENANT_ID` and defaulted `tenant_id` write to `CURRENT_TENANT_ID`. |
+| J-B7 | Cloudinary folders for election evidence | Done | `src/lib/cloudinary.ts`, `src/app/portal/election/pu-reports/page.tsx`, `src/app/portal/election/incidents/page.tsx` | Added `"ifeanyi-2027/pu-reports"` and `"ifeanyi-2027/incidents"` to Cloudinary folder types and updated page upload calls. |
+| J-B8 | Remove `/portal/campaign/calendar` links | Done | `src/components/dashboard/CampaignDashboard.tsx` | Replaced `/portal/campaign/calendar` link with `/portal/campaign/activities`. |
+| J-B9 | Add Contact Messages to admin sidebar | Done | `src/app/portal/layout.tsx` | Added Contact Messages entry to `adminNavigation`. |
+| J-B10 | Duplicate Dashboard nav entry | Done | `src/app/portal/layout.tsx` | Renamed child Dashboard entry under Campaign Council to "Campaign Overview". |
+| J-B11 | Dual-membership dashboard priority | Done | `src/app/portal/dashboard/page.tsx` | Added an interactive view toggle allowing dual members (Campaign + Social) to switch views smoothly. |
+| J-B12 | Firestore rules — tenant scope election config reads | Done | `firestore.rules` | Restricted `election_cycles`, `election_contests`, `election_candidates`, and `election_settings` reads to tenant scope. |
+| J-B13 | Firestore rules — restrict PU reports & incidents reads | Done | `firestore.rules` | Restricted `pu_reports` and `election_incidents` reads to tenant scope and `isAdminOrElectionOfficer() || isCampaignMember()`. |
+| J-B14 | Firestore rules — admin correction status transition | Done | `firestore.rules` | Updated `adminCorrectionUpdate()` to force status `pending_review` and `verified == false` per spec §32. |
+| J-B17 | Wire `user_access` index writes | Done | `src/lib/firebase/permissionGrants.ts` | Implemented Option A, extending grant creation, update, and deletion to mirror writes automatically into `user_access`. |
+| J-B18 | Lint cleanup — errors only | Done | `src/components/ShareButtons.tsx`, `src/components/home/ElectionCountdown.tsx`, `src/hooks/useOrganizationalAssignments.ts`, `src/hooks/useScopedCampaignMembers.ts`, `src/app/portal/tasks/page.tsx`, `src/app/portal/election/upload/page.tsx`, `src/app/portal/election/operations/page.tsx`, `src/app/portal/admin/election/page.tsx`, `src/lib/firebase/auth.ts`, `src/lib/firebase/firestore.ts`, `src/components/dashboard/CampaignDashboard.tsx`, `src/components/dashboard/SocialMemberDashboard.tsx` | Resolved all 75 ESLint error instances. `npm run lint` error count reduced from 75 to 0. |
+| Feature | Dynamic Dashboard PU Arrivals & Coverage Calculation | Done | `src/app/portal/election/page.tsx` | Dynamic calculation of expected PU arrivals and coverage % based on selected LGA or Ward filter. |
