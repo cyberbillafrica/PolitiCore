@@ -365,11 +365,13 @@ function adminCorrectionUpdate() {
       == resource.data.polling_unit_id
     && request.resource.data.submitted_by
       == resource.data.submitted_by
-    && request.resource.data.status == resource.data.status
-    && request.resource.data.verified == resource.data.verified
+    && request.resource.data.status == "pending_review"
+    && request.resource.data.verified == false
     && request.resource.data.diff(resource.data).affectedKeys()
       .hasOnly([
         "results",
+        "status",
+        "verified",
         "history",
         "updated_at"
       ]);

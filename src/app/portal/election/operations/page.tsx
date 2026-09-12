@@ -116,24 +116,30 @@ export default function ElectionOperationsPage() {
     };
   };
 
-  // Auth Protection Check: Strictly Election Officer or Admin
+  // Auth Protection Check: Strictly Election Officer per J-E2-4 & Spec §27
   useEffect(() => {
     if (authLoading) return;
 
     if (!profile) {
-      router.push("/portal/auth/login");
+      router.replace("/portal/auth/login");
       return;
     }
 
-    const role = profile.access_role || "member";
-    const isOfficerOrAdmin =
-      role === "platform_super_admin" ||
-      role === "tenant_super_admin" ||
-      role === "admin" ||
-      role === "election_officer";
+    const isSocialOnly =
+      profile?.membership_types?.includes("social_member") &&
+      !profile?.membership_types?.includes("campaign_member") &&
+      profile.access_role !== "election_officer" &&
+      profile.access_role !== "admin" &&
+      profile.access_role !== "tenant_super_admin" &&
+      profile.access_role !== "platform_super_admin";
 
-    if (!isOfficerOrAdmin) {
-      router.push("/portal/dashboard");
+    if (isSocialOnly) {
+      router.replace("/portal/dashboard");
+      return;
+    }
+
+    if (profile.access_role !== "election_officer") {
+      router.replace("/portal/dashboard");
     }
   }, [profile, authLoading, router]);
 
