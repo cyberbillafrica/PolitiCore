@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   submitElectionResultWithEvidence,
@@ -28,7 +29,30 @@ import {
 } from "lucide-react";
 
 export default function ElectionUploadPage() {
-  const { profile } = useAuth();
+  const router = useRouter();
+  const { profile, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!profile) {
+      router.replace("/portal/auth/login");
+      return;
+    }
+
+    const isSocialOnly =
+      profile?.membership_types?.includes("social_member") &&
+      !profile?.membership_types?.includes("campaign_member") &&
+      profile.access_role !== "election_officer" &&
+      profile.access_role !== "admin" &&
+      profile.access_role !== "tenant_super_admin" &&
+      profile.access_role !== "platform_super_admin";
+
+    if (isSocialOnly) {
+      router.replace("/portal/dashboard");
+    }
+  }, [profile, authLoading, router]);
+
   const isAdminOrElectionOfficer =
     profile?.access_role === "admin" ||
     profile?.access_role === "tenant_super_admin" ||
@@ -112,11 +136,22 @@ export default function ElectionUploadPage() {
   const currentContest = contests.find((c) => c.id === selectedContestId);
   const currentCycle = cycles.find((c) => c.id === selectedCycleId);
 
-  const trackedPartyObjects = (currentContest?.tracked_parties || ["apc", "pdp", "lp", "apga", "adc"])
-    .map((pid) => {
-      const pObj = allParties.find((p) => p.id === pid.toLowerCase() || p.acronym.toLowerCase() === pid.toLowerCase());
-      return pObj || { id: pid, acronym: pid.toUpperCase(), name: pid.toUpperCase(), inec_registered: true, status: "active" as const };
-    });
+  const trackedPartiesList = currentContest?.tracked_parties ?? [];
+
+  const trackedPartyObjects = trackedPartiesList.map((pid) => {
+    const pObj = allParties.find(
+      (p) => p.id === pid.toLowerCase() || p.acronym.toLowerCase() === pid.toLowerCase()
+    );
+    return (
+      pObj || {
+        id: pid,
+        acronym: pid.toUpperCase(),
+        name: pid.toUpperCase(),
+        inec_registered: true,
+        status: "active" as const,
+      }
+    );
+  });
 
   // Reset/Initialize party vote object when contest changes
   useEffect(() => {
@@ -178,6 +213,34 @@ export default function ElectionUploadPage() {
         setError(
           "You can only submit results for your registered ward and polling unit.",
         );
+        return;
+      }
+    }
+
+    // Validate polling unit belongs to contest scope
+    const parentLgaId = form.lga_id;
+    if ((currentContest.scope_type as string) === "lga") {
+      if (
+        parentLgaId &&
+        currentContest.scope_id &&
+        parentLgaId.toLowerCase() !== currentContest.scope_id.toLowerCase()
+      ) {
+        setError("This polling unit is not within the scope of the selected contest.");
+        return;
+      }
+    } else if (
+      currentContest.scope_type === "federal_constituency" ||
+      currentContest.scope_type === "state_constituency"
+    ) {
+      if (
+        currentContest.lga_ids &&
+        currentContest.lga_ids.length > 0 &&
+        parentLgaId &&
+        !currentContest.lga_ids.some(
+          (id) => id.toLowerCase() === parentLgaId.toLowerCase()
+        )
+      ) {
+        setError("This polling unit is not within the scope of the selected contest.");
         return;
       }
     }
@@ -247,6 +310,20 @@ export default function ElectionUploadPage() {
       <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-3">
         <Loader2 className="h-8 w-8 animate-spin text-apc-primary" />
         <p className="text-sm text-gray-500">Loading Election Configuration...</p>
+      </div>
+    );
+  }
+
+  if (contests.length === 0) {
+    return (
+      <div className="max-w-xl mx-auto my-12 p-8 bg-white rounded-2xl shadow-sm border border-gray-200 text-center space-y-4">
+        <div className="mx-auto w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-gray-900">No Open Contests Active</h2>
+        <p className="text-sm text-gray-600 leading-relaxed">
+          No open election contests are currently active for result collation. Please check back later or contact your Campaign Administrator.
+        </p>
       </div>
     );
   }
@@ -504,28 +581,34 @@ export default function ElectionUploadPage() {
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {trackedPartyObjects.map((party) => (
-              <div key={party.id} className="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                <label className="block text-xs font-bold text-gray-800 uppercase mb-1">
-                  {party.acronym} — {party.name}
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={partyVotes[party.id] ?? 0}
-                  onChange={(e) =>
-                    setPartyVotes({
-                      ...partyVotes,
-                      [party.id]: parseInt(e.target.value) || 0,
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary text-sm font-mono font-bold"
-                  placeholder="0"
-                />
-              </div>
-            ))}
-          </div>
+          {trackedPartyObjects.length === 0 ? (
+            <div className="p-4 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs font-semibold">
+              No tracked parties configured for this contest. Contact the election administrator.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {trackedPartyObjects.map((party) => (
+                <div key={party.id} className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <label className="block text-xs font-bold text-gray-800 uppercase mb-1">
+                    {party.acronym} — {party.name}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={partyVotes[party.id] ?? 0}
+                    onChange={(e) =>
+                      setPartyVotes({
+                        ...partyVotes,
+                        [party.id]: parseInt(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-apc-primary text-sm font-mono font-bold"
+                    placeholder="0"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {error && (
@@ -544,7 +627,7 @@ export default function ElectionUploadPage() {
 
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || trackedPartyObjects.length === 0}
           className="w-full bg-apc-primary text-white py-3 rounded-xl font-bold hover:bg-apc-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
         >
           {submitting ? (

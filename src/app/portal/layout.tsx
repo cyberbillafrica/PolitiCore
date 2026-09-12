@@ -66,6 +66,7 @@ type NavChild = {
   icon: React.ComponentType<{ className?: string }>;
 
   adminOnly?: boolean;
+  officerOnly?: boolean;
   electionReporting?: boolean;
   electionModeRequired?: boolean;
 };
@@ -193,7 +194,7 @@ const navigation: NavItem[] = [
         name: "Officer Operations Desk",
         href: "/portal/election/operations",
         icon: CheckSquare,
-        adminOnly: true,
+        officerOnly: true,
         electionModeRequired: true,
       },
 
@@ -503,8 +504,9 @@ export default function PortalLayout({
               return isCampaignMember || isAdmin || isElectionOfficer;
             }
 
+            // Admins use /portal/election for corrections; the operations desk is officer-only per spec §27.
             if (child.href === "/portal/election/operations") {
-              return isAdmin || isElectionOfficer;
+              return role === "election_officer";
             }
 
             if ("electionReporting" in child && child.electionReporting) {

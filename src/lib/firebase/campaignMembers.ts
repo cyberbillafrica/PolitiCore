@@ -111,6 +111,7 @@ export async function getScopedCampaignMembers(
   if (assignment.scope_type === "polling_unit") {
     const membersQuery = query(
       collection(db, "users"),
+      where("tenant_id", "==", CURRENT_TENANT_ID),
       where("membership_types", "array-contains", "campaign_member"),
       where("polling_unit_id", "==", assignment.scope_id),
     );
@@ -132,6 +133,7 @@ export async function getScopedCampaignMembers(
   if (assignment.scope_type === "ward") {
     const membersQuery = query(
       collection(db, "users"),
+      where("tenant_id", "==", CURRENT_TENANT_ID),
       where("membership_types", "array-contains", "campaign_member"),
       where("ward_id", "==", assignment.scope_id),
     );
@@ -157,6 +159,7 @@ export async function getScopedCampaignMembers(
     // Direct lga_id query
     const lgaQ = query(
       collection(db, "users"),
+      where("tenant_id", "==", CURRENT_TENANT_ID),
       where("membership_types", "array-contains", "campaign_member"),
       where("lga_id", "==", assignment.scope_id)
     );
@@ -173,6 +176,7 @@ export async function getScopedCampaignMembers(
       const chunk = coveredWardIds.slice(i, i + chunkSize);
       const wardQ = query(
         collection(db, "users"),
+        where("tenant_id", "==", CURRENT_TENANT_ID),
         where("ward_id", "in", chunk)
       );
       const wardSnap = await getDocs(wardQ);

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BarChart,
@@ -62,9 +63,50 @@ interface AlertToast {
   results: ElectionPartyResult[];
 }
 
+function getDocTimestamp(doc: ElectionResultDoc): number {
+  const ts = doc.updated_at || doc.created_at;
+  if (!ts) return 0;
+  if (typeof ts === "number") return ts;
+  if (typeof ts === "string") {
+    const t = new Date(ts).getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  if (typeof ts === "object") {
+    if ("seconds" in ts && typeof (ts as any).seconds === "number") {
+      return (ts as any).seconds * 1000;
+    }
+    if (ts instanceof Date) {
+      return ts.getTime();
+    }
+  }
+  return 0;
+}
+
 export default function ElectionDashboard() {
+  const router = useRouter();
   const { profile, assignments, accessLoading } = useAuth();
   const isAdmin = isAdminUser(profile);
+
+  useEffect(() => {
+    if (accessLoading) return;
+
+    if (!profile) {
+      router.replace("/portal/auth/login");
+      return;
+    }
+
+    const isSocialOnly =
+      profile?.membership_types?.includes("social_member") &&
+      !profile?.membership_types?.includes("campaign_member") &&
+      profile.access_role !== "election_officer" &&
+      profile.access_role !== "admin" &&
+      profile.access_role !== "tenant_super_admin" &&
+      profile.access_role !== "platform_super_admin";
+
+    if (isSocialOnly) {
+      router.replace("/portal/dashboard");
+    }
+  }, [profile, accessLoading, router]);
 
   const [lgas, setLgas] = useState<LGA[]>([]);
   const [cycles, setCycles] = useState<ElectionCycle[]>([]);
@@ -87,6 +129,7 @@ export default function ElectionDashboard() {
 
   // Modals & Toasts
   const [toastAlerts, setToastAlerts] = useState<AlertToast[]>([]);
+  const lastToastTimeRef = useRef<number>(0);
   const [inspectResult, setInspectResult] = useState<ElectionResultDoc | null>(null);
   const [editingResult, setEditingResult] = useState<ElectionResultDoc | null>(null);
   const [editFormResults, setEditFormResults] = useState<ElectionPartyResult[]>([]);
@@ -166,17 +209,43 @@ export default function ElectionDashboard() {
         setResults(docs);
         setLoading(false);
 
-        if (!isInitialLoad && docs.length > 0) {
-          const newest = docs[docs.length - 1];
+        if (isInitialLoad) {
+          let maxTime = 0;
+          for (const d of docs) {
+            const t = getDocTimestamp(d);
+            if (t > maxTime) maxTime = t;
+          }
+          if (maxTime > lastToastTimeRef.current) {
+            lastToastTimeRef.current = maxTime;
+          }
+        } else if (docs.length > 0) {
+          let newest: ElectionResultDoc | null = null;
+          let maxTime = 0;
 
-          if (newest.status === "approved") {
+          for (const d of docs) {
+            const t = getDocTimestamp(d);
+            if (t > maxTime) {
+              maxTime = t;
+              newest = d;
+            }
+          }
+
+          if (
+            newest &&
+            newest.status === "approved" &&
+            maxTime > lastToastTimeRef.current
+          ) {
+            lastToastTimeRef.current = maxTime;
+
             let puName = newest.polling_unit_id;
             let wardName = newest.ward_id;
             let lgaName = "Enugu";
 
             for (const lga of lgas) {
               for (const ward of lga.wards) {
-                const pu = ward.pollingUnits.find((p) => p.id === newest.polling_unit_id);
+                const pu = ward.pollingUnits.find(
+                  (p) => p.id === newest!.polling_unit_id,
+                );
                 if (pu) {
                   puName = `${pu.code} — ${pu.name}`;
                   wardName = `${ward.code} — ${ward.name}`;
@@ -258,7 +327,7 @@ export default function ElectionDashboard() {
 
   // Current Contest Object & Tracked Parties List
   const currentContest = contests.find((c) => c.id === selectedContestId);
-  const trackedParties = currentContest?.tracked_parties || ["apc", "pdp", "lp", "apga", "adc"];
+  const trackedParties = currentContest?.tracked_parties ?? [];
 
   // Aggregated Official Party Totals & Operational Breakdown
   const aggregates = useMemo(() => {
@@ -562,25 +631,35 @@ export default function ElectionDashboard() {
           <select
             value={comparePartyA}
             onChange={(e) => setComparePartyA(e.target.value)}
-            className="px-2 py-1 border rounded bg-white font-bold uppercase"
+            disabled={trackedParties.length === 0}
+            className="px-2 py-1 border rounded bg-white font-bold uppercase disabled:bg-gray-100"
           >
-            {trackedParties.map((p) => (
-              <option key={p} value={p}>
-                {p.toUpperCase()}
-              </option>
-            ))}
+            {trackedParties.length === 0 ? (
+              <option value="">N/A</option>
+            ) : (
+              trackedParties.map((p) => (
+                <option key={p} value={p}>
+                  {p.toUpperCase()}
+                </option>
+              ))
+            )}
           </select>
           <span className="text-slate-400 font-bold">vs</span>
           <select
             value={comparePartyB}
             onChange={(e) => setComparePartyB(e.target.value)}
-            className="px-2 py-1 border rounded bg-white font-bold uppercase"
+            disabled={trackedParties.length === 0}
+            className="px-2 py-1 border rounded bg-white font-bold uppercase disabled:bg-gray-100"
           >
-            {trackedParties.map((p) => (
-              <option key={p} value={p}>
-                {p.toUpperCase()}
-              </option>
-            ))}
+            {trackedParties.length === 0 ? (
+              <option value="">N/A</option>
+            ) : (
+              trackedParties.map((p) => (
+                <option key={p} value={p}>
+                  {p.toUpperCase()}
+                </option>
+              ))
+            )}
           </select>
         </div>
       </div>
@@ -679,26 +758,32 @@ export default function ElectionDashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent className="pb-6">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            {trackedParties.map((p) => {
-              const pKey = p.toLowerCase();
-              const v = aggregates.partyTotals[pKey] || 0;
-              const pColor = getPartyColor(pKey);
+          {trackedParties.length === 0 ? (
+            <div className="p-4 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-xs font-semibold">
+              No tracked parties configured for this contest. Contact the election administrator.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {trackedParties.map((p) => {
+                const pKey = p.toLowerCase();
+                const v = aggregates.partyTotals[pKey] || 0;
+                const pColor = getPartyColor(pKey);
 
-              return (
-                <div
-                  key={p}
-                  className="p-3 rounded-xl border flex flex-col items-center text-center space-y-1"
-                  style={{ borderLeftWidth: "4px", borderLeftColor: pColor }}
-                >
-                  <span className="text-xs font-bold uppercase text-slate-500">{p}</span>
-                  <span className="text-xl font-bold font-mono text-slate-900">
-                    {v.toLocaleString()}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                return (
+                  <div
+                    key={p}
+                    className="p-3 rounded-xl border flex flex-col items-center text-center space-y-1"
+                    style={{ borderLeftWidth: "4px", borderLeftColor: pColor }}
+                  >
+                    <span className="text-xs font-bold uppercase text-slate-500">{p}</span>
+                    <span className="text-xl font-bold font-mono text-slate-900">
+                      {v.toLocaleString()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
