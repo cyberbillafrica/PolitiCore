@@ -1,0 +1,60 @@
+// ============================================================
+// RECOMMENDATIONS & ADDITIONAL FIREBASE SECURITY RULES
+// ============================================================
+// File: docs/new.rules
+// Description: Recommended additions to firestore.rules for
+// strict election result access scoping and user document integrity.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------
+    // 1. STRICT ELECTION RESULT ACCESS RULE (REPLACEMENT FOR canReadElectionResult)
+    // ------------------------------------------------------------
+    // Ensures campaign members without global/scoped organizational grants
+    // can ONLY read election results matching their registered ward AND polling unit.
+
+    function registeredAt(wardId, pollingUnitId) {
+      return isCampaignMember()
+        && callerProfile().ward_id == wardId
+        && callerProfile().polling_unit_id == pollingUnitId;
+    }
+
+    function canReadElectionResultStrict(data) {
+      return sameTenant(data)
+        && (
+          isAdmin()
+          || isElectionOfficer()
+          || registeredAt(data.ward_id, data.polling_unit_id)
+          || hasGlobalAccess("view_election_results")
+          || hasScopedAccess("view_election_results", "ward", data.ward_id)
+          || hasScopedAccess("view_election_results", "polling_unit", data.polling_unit_id)
+        );
+    }
+
+    // Apply strict helper to election_results collection:
+    match /election_results/{resultId} {
+      allow read: if canReadElectionResultStrict(resource.data);
+    }
+
+    // ------------------------------------------------------------
+    // 2. USER PROFILE INTEGRITY RULE (ENFORCING ELECTORAL FIELDS)
+    // ------------------------------------------------------------
+    // Prevents self-update from clearing registered ward_id or polling_unit_id
+    // once set, while allowing admin full management.
+
+    match /users/{userId} {
+      allow update: if isOwner(userId)
+        && request.resource.data.access_role == resource.data.access_role
+        && request.resource.data.tenant_id == resource.data.tenant_id
+        && request.resource.data.membership_types == resource.data.membership_types
+        && request.resource.data.points == resource.data.points
+        && request.resource.data.rank == resource.data.rank
+        // Preserve electoral location integrity on profile edit
+        && (resource.data.ward_id == null || request.resource.data.ward_id == resource.data.ward_id)
+        && (resource.data.polling_unit_id == null || request.resource.data.polling_unit_id == resource.data.polling_unit_id);
+    }
+  }
+}
