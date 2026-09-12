@@ -282,12 +282,31 @@ export default function ElectionDashboard() {
 
   // Hierarchical Scope Filtering
   const coveredResults = useMemo(() => {
-    if (isAdmin) return results;
+    if (isAdmin || profile?.access_role === "election_officer") return results;
 
     const activeAssignments = assignments.filter((a) => a.status === "active");
-    if (activeAssignments.length === 0) return [];
+
+    // Ordinary member without specific administrative assignments is scoped to their registered PU
+    if (activeAssignments.length === 0) {
+      if (profile?.ward_id && profile?.polling_unit_id) {
+        return results.filter(
+          (r) =>
+            r.ward_id === profile.ward_id &&
+            r.polling_unit_id === profile.polling_unit_id
+        );
+      }
+      return [];
+    }
 
     return results.filter((result) => {
+      // Check if user's registered PU matches
+      if (
+        profile?.ward_id === result.ward_id &&
+        profile?.polling_unit_id === result.polling_unit_id
+      ) {
+        return true;
+      }
+
       return activeAssignments.some(
         (assignment) =>
           assignmentCoversScope(
@@ -302,7 +321,7 @@ export default function ElectionDashboard() {
           )
       );
     });
-  }, [isAdmin, assignments, results, lgas]);
+  }, [isAdmin, profile, assignments, results, lgas]);
 
   // Operational Submissions vs Official Results
   const operationalSubmissions = useMemo(() => {
@@ -369,10 +388,26 @@ export default function ElectionDashboard() {
     const clarifyCount = operationalSubmissions.filter((r) => r.status === "clarification_required").length;
     const reopenedCount = operationalSubmissions.filter((r) => r.status === "reopened").length;
 
-    const totalPUsInScope = lgas.reduce(
-      (acc, l) => acc + l.wards.reduce((wAcc, w) => wAcc + w.pollingUnits.length, 0),
-      0
-    );
+    let totalPUsInScope = 0;
+    if (selectedWardId !== "all") {
+      for (const l of lgas) {
+        const w = l.wards.find((item) => item.id === selectedWardId);
+        if (w) {
+          totalPUsInScope = w.pollingUnits.length;
+          break;
+        }
+      }
+    } else if (selectedLgaId !== "all") {
+      const l = lgas.find((item) => item.id === selectedLgaId);
+      if (l) {
+        totalPUsInScope = l.wards.reduce((acc, w) => acc + w.pollingUnits.length, 0);
+      }
+    } else {
+      totalPUsInScope = lgas.reduce(
+        (acc, l) => acc + l.wards.reduce((wAcc, w) => wAcc + w.pollingUnits.length, 0),
+        0
+      );
+    }
 
     const reportingPercent = totalPUsInScope > 0
       ? ((approvedCount / totalPUsInScope) * 100).toFixed(1)
