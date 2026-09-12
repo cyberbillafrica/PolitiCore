@@ -165,6 +165,35 @@ export async function submitTaskCompletion(
 }
 
 /**
+ * Updates an existing task submission (allows resubmission/overwriting proof URL)
+ * as long as it has not already been verified.
+ */
+export async function updateTaskSubmission(
+  taskId: string,
+  userId: string,
+  proofUrl?: string,
+) {
+  const submissionId = `${taskId}_${userId}`;
+  const submissionRef = doc(db, "task_submissions", submissionId);
+
+  const snap = await getDoc(submissionRef);
+  if (!snap.exists()) {
+    throw new Error("Task submission not found.");
+  }
+
+  const currentData = snap.data();
+  if (currentData.status === "verified") {
+    throw new Error("Cannot update a verified task submission.");
+  }
+
+  await updateDoc(submissionRef, {
+    proof_url: proofUrl?.trim() || null,
+    status: "pending",
+    updated_at: serverTimestamp(),
+  });
+}
+
+/**
  * Gets all submissions for a specific task.
  *
  * Admin use only.
@@ -190,18 +219,30 @@ export async function getSubmissionsForTaskWithUsers(taskId: string) {
     [key: string]: unknown;
   }[];
 
-  const withUsers = await Promise.all(
-    submissions.map(async (submission) => {
-      const user = await getUserProfile(submission.user_id);
+  if (submissions.length === 0) return [];
 
-      return {
-        ...submission,
-        user,
-      };
-    }),
-  );
+  // Extract unique user IDs
+  const userIds = Array.from(new Set(submissions.map((s) => s.user_id)));
+  const userMap = new Map<string, unknown>();
 
-  return withUsers;
+  // Batch query in chunks of 30
+  const chunkSize = 30;
+  for (let i = 0; i < userIds.length; i += chunkSize) {
+    const chunk = userIds.slice(i, i + chunkSize);
+    const usersQ = query(
+      collection(db, "users"),
+      where("__name__", "in", chunk)
+    );
+    const userSnap = await getDocs(usersQ);
+    userSnap.docs.forEach((d) => {
+      userMap.set(d.id, { id: d.id, ...d.data() });
+    });
+  }
+
+  return submissions.map((submission) => ({
+    ...submission,
+    user: userMap.get(submission.user_id) || null,
+  }));
 }
 
 /**
@@ -359,45 +400,22 @@ export function normalizeNewsArticle(id: string, data: Record<string, unknown>):
 }
 
 export async function getPublishedNews(limitCount: number = 20): Promise<NewsArticle[]> {
-  // Simple equality queries without orderBy to avoid requiring Firestore composite indexes
-  const qStatus = query(
+  const q = query(
     collection(db, "news"),
     where("status", "==", "published"),
-    limit(limitCount * 2),
-  );
-
-  const qLegacy = query(
-    collection(db, "news"),
-    where("published", "==", true),
-    limit(limitCount * 2),
+    limit(limitCount),
   );
 
   try {
-    const [snapStatus, snapLegacy] = await Promise.all([
-      getDocs(qStatus).catch(() => ({ docs: [] })),
-      getDocs(qLegacy).catch(() => ({ docs: [] })),
-    ]);
-
-    const articlesMap = new Map<string, NewsArticle>();
-
-    for (const d of snapStatus.docs) {
-      articlesMap.set(d.id, normalizeNewsArticle(d.id, d.data()));
-    }
-
-    for (const d of snapLegacy.docs) {
-      if (!articlesMap.has(d.id)) {
-        articlesMap.set(d.id, normalizeNewsArticle(d.id, d.data()));
-      }
-    }
-
-    const articles = Array.from(articlesMap.values());
+    const snap = await getDocs(q);
+    const articles = snap.docs.map((d) => normalizeNewsArticle(d.id, d.data()));
     articles.sort((a, b) => {
       const timeA = (a.created_at as { seconds?: number })?.seconds || 0;
       const timeB = (b.created_at as { seconds?: number })?.seconds || 0;
       return timeB - timeA;
     });
 
-    return articles.slice(0, limitCount);
+    return articles;
   } catch (error) {
     console.error("Error fetching published news:", error);
     return [];

@@ -104,9 +104,10 @@ export async function getAllLGAs(): Promise<LGA[]> {
       return lgas;
     }
   } catch (err) {
-    console.error("Failed to load LGAs from Firestore, using fallback:", err);
+    console.error("Failed to load LGAs from Firestore:", err);
+    throw new Error("Failed to load electoral data from database.");
   }
-  return [fallbackLGA];
+  return [];
 }
 
 export async function getLGA(id: string): Promise<LGA | null> {

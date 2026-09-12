@@ -211,6 +211,7 @@ export default function VolunteerPage() {
     control,
     handleSubmit,
     resetField,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<VolunteerFormData>({
     resolver: zodResolver(volunteerSchema),
@@ -257,6 +258,22 @@ export default function VolunteerPage() {
   });
 
   const isSocialMember = selectedMemberships.includes("social_member");
+
+  // Clear social media errors when "Social Member" is unchecked
+  useEffect(() => {
+    if (!isSocialMember) {
+      clearErrors([
+        "facebook_name",
+        "facebook_profile_url",
+        "x_name",
+        "x_profile_url",
+        "instagram_name",
+        "instagram_profile_url",
+        "tiktok_name",
+        "tiktok_profile_url",
+      ]);
+    }
+  }, [isSocialMember, clearErrors]);
 
   // ─────────────────────────────────────────────
   // Selected LGA & Ward

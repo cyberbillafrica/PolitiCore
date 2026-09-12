@@ -154,15 +154,42 @@ export async function getScopedCampaignMembers(
     const lgas = lgasData || (await getAllLGAs());
     const coveredWardIds = getCoveredWardIds([assignment], lgas);
 
-    const allMembers = await getAllCampaignMembersForTenant();
-
-    const filtered = allMembers.filter((m) =>
-      m.lga_id === assignment.scope_id ||
-      (m.ward_id && coveredWardIds.includes(m.ward_id))
+    // Direct lga_id query
+    const lgaQ = query(
+      collection(db, "users"),
+      where("membership_types", "array-contains", "campaign_member"),
+      where("lga_id", "==", assignment.scope_id)
     );
 
+    const lgaSnap = await getDocs(lgaQ);
+    const membersMap = new Map<string, ScopedCampaignMember>();
+    lgaSnap.docs.forEach((d) => {
+      membersMap.set(d.id, { id: d.id, ...d.data() } as ScopedCampaignMember);
+    });
+
+    // Chunked ward_id queries (in chunks of 30) for covered wards
+    const chunkSize = 30;
+    for (let i = 0; i < coveredWardIds.length; i += chunkSize) {
+      const chunk = coveredWardIds.slice(i, i + chunkSize);
+      const wardQ = query(
+        collection(db, "users"),
+        where("membership_types", "array-contains", "campaign_member"),
+        where("ward_id", "in", chunk)
+      );
+      const wardSnap = await getDocs(wardQ);
+      wardSnap.docs.forEach((d) => {
+        membersMap.set(d.id, { id: d.id, ...d.data() } as ScopedCampaignMember);
+      });
+    }
+
+    const members = Array.from(membersMap.values()).sort((a, b) => {
+      const left = a.full_name ?? a.email ?? "";
+      const right = b.full_name ?? b.email ?? "";
+      return left.localeCompare(right);
+    });
+
     return {
-      members: filtered,
+      members,
       scopeSupported: true,
     };
   }
